@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AWS Fullstack Template: sprint timeline</title>
+<style>
+  :root { --label: 160px; --summary: 110px; --cols: 20; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px 32px; font: 14px/1.4 system-ui, sans-serif; color: #1f2937; background: #f8fafc; }
+  h1 { margin: 0 0 4px; font-size: 22px; }
+  .sub { color: #6b7280; margin-bottom: 18px; }
+  .kpis { display: flex; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
+  .kpi { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px 16px; min-width: 150px; }
+  .kpi b { display: block; font-size: 22px; }
+  .kpi span { color: #6b7280; font-size: 12px; }
+  .scroll { overflow-x: auto; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; }
+  .chart { min-width: 1300px; }
+  .row { display: grid; grid-template-columns: var(--label) 1fr var(--summary); border-bottom: 1px solid #e5e7eb; }
+  .row > .name { padding: 8px 12px; display: flex; align-items: flex-start; gap: 8px; font-weight: 600; border-right: 1px solid #e5e7eb; }
+  .row > .sum { padding: 8px 12px; font-size: 12px; color: #6b7280; border-left: 1px solid #e5e7eb; }
+  .meter { height: 6px; background: #e5e7eb; border-radius: 3px; overflow: hidden; margin-top: 4px; }
+  .meter i { display: block; height: 100%; background: #16a34a; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; margin-top: 5px; }
+  .track { position: relative;
+    background: repeating-linear-gradient(to right, transparent 0 calc(5% - 1px), #eef0f3 calc(5% - 1px) 5%); }
+  .head { background: #f8fafc; font-weight: 600; }
+  .head .track { display: grid; grid-template-columns: repeat(var(--cols), 1fr); background: none; }
+  .head .track div { padding: 6px 4px; font-size: 11px; color: #6b7280; border-right: 1px solid #e5e7eb; text-align: center; }
+  .head .track div b { display: block; color: #1f2937; }
+  .head .track div.wk { border-left: 2px solid #cbd5e1; }
+  .sprints .track { display: grid; grid-template-columns: 1fr 1fr; background: none; }
+  .sprints .track div { padding: 6px 10px; font-size: 13px; text-align: center; }
+  .sprints .track div:first-child { background: #eef2ff; color: #3730a3; }
+  .sprints .track div:last-child { background: #ecfeff; color: #155e75; border-left: 3px solid #475569; }
+  .sprints .track small { font-weight: 400; color: #6b7280; margin-left: 6px; }
+  .miles .track { height: 26px; }
+  .bar { position: absolute; height: 20px; border-radius: 5px; border: 2px solid var(--c); background: #fff; }
+  .bar.active { background: repeating-linear-gradient(45deg, var(--bg) 0 6px, #fff 6px 12px); }
+  .bar.done { background: var(--c); }
+  .bar.ext { border-style: dashed; }
+  .bar.crit { box-shadow: inset 5px 0 0 #dc2626; }
+  .bar.late { outline: 2px solid #dc2626; outline-offset: 2px; background-color: #fee2e2; }
+  .lbl { position: absolute; font-size: 12px; white-space: nowrap; line-height: 20px; color: #374151; }
+  .lbl b { color: #111; }
+  .lbl .late { color: #dc2626; font-weight: 700; }
+  .body { position: relative; }
+  .overlay { position: absolute; top: 0; bottom: 0; left: var(--label); right: var(--summary); pointer-events: none; }
+  .vline { position: absolute; top: 0; bottom: 0; border-left: 2px dashed #64748b; }
+  .vline.sprint { border-left: 3px solid #475569; }
+  .vline span { position: absolute; top: 4px; font-size: 11px; font-weight: 600; white-space: nowrap; color: #334155; }
+  .vline.left span { right: 6px; }
+  .vline:not(.left) span { left: 6px; }
+  .today { border-left: 3px solid #e11d48; }
+  .today span { color: #e11d48; top: auto; bottom: 4px; }
+  .cut { position: absolute; top: 0; bottom: 0; background: rgba(251, 191, 36, .12); }
+  .legend { display: flex; gap: 18px; flex-wrap: wrap; margin: 14px 0; font-size: 12px; color: #4b5563; align-items: center; }
+  .legend .bar { position: static; width: 44px; display: inline-block; vertical-align: middle; margin-right: 6px; --c: #64748b; --bg: #e2e8f0; }
+  .note { color: #6b7280; font-size: 12px; max-width: 900px; }
+  body.embed { padding: 8px 4px; background: #fff; }
+  body.embed h1, body.embed .sub, body.embed .note { display: none; }
+</style>
+</head>
+<body>
+<h1>AWS Fullstack Template: sprint timeline</h1>
+<div class="sub">BLEND360/blendx-core#1144 · one engineer · two sprints, 20 working days · 70h committed against 160h capacity · source: <code>03-subtickets.md</code></div>
+
+<div class="kpis" id="kpis"></div>
+
+<div class="legend">
+  <span><span class="bar"></span>To do</span>
+  <span><span class="bar active"></span>In progress</span>
+  <span><span class="bar done"></span>Done</span>
+  <span><span class="bar ext"></span>Extension (cut first)</span>
+  <span><span class="bar crit"></span>Critical path</span>
+  <span><span class="bar late"></span>Behind plan</span>
+  <span style="color:#e11d48;font-weight:600">┃ Today</span>
+  <span style="background:rgba(251,191,36,.25);padding:0 6px">Cut line: extensions at the end of Sprint 2</span>
+</div>
+
+<div class="scroll"><div class="chart" id="chart"></div></div>
+
+<p class="note">
+  Each sprint's committed hours are spread across its ten days (about 3.5h of ticket work a day). The rest of
+  the time is buffer, so even if every ticket hits the top of its range (123h) the plan still fits in the two sprints.<br>
+  To update: change <code>status</code> on a ticket in the <code>TICKETS</code> list at the bottom of this file
+  (<code>todo</code> → <code>active</code> → <code>done</code>) and refresh. A bar is flagged <b>late</b> when the plan says
+  it should be finished by now and it is not. To preview another date, add <code>?today=2026-10-14</code> to the URL.
+</p>
+
+<script>
+// ---- Edit here -------------------------------------------------------------
+const SPRINT_START = '2026-09-28';   // a Monday: day 1 of Sprint 1
+const SPRINTS = [
+  { name: 'Sprint 1', board: 'Sprint 25', goal: 'runs locally end to end' },
+  { name: 'Sprint 2', board: 'Sprint 26', goal: 'deployed, authenticated, hardened' },
+];
+const DAYS_PER_SPRINT = 10;
+
+const LANES = [
+  { id: 'foundation', name: 'Foundation',     c: '#475569', bg: '#e2e8f0' },
+  { id: 'infra',      name: 'Infra (IaC)',    c: '#b45309', bg: '#fde68a' },
+  { id: 'harness',    name: 'Harness',        c: '#6d28d9', bg: '#ddd6fe' },
+  { id: 'backend',    name: 'Backend',        c: '#1d4ed8', bg: '#bfdbfe' },
+  { id: 'frontend',   name: 'Frontend',       c: '#15803d', bg: '#bbf7d0' },
+  { id: 'auth',       name: 'Auth',           c: '#b91c1c', bg: '#fecaca' },
+  { id: 'cicd',       name: 'CI/CD',          c: '#c2410c', bg: '#fed7aa' },
+  { id: 'quality',    name: 'Quality & Docs', c: '#0e7490', bg: '#a5f3fc' },
+];
+
+// Execution order from 03-subtickets.md. Within a sprint each bar starts where the previous one ends.
+// status: 'todo' | 'active' | 'done'
+const TICKETS = [
+  { sprint: 1, id: 'ST-01',      name: 'Repo scaffold',                 lane: 'foundation', h: 4,   crit: true, status: 'todo' },
+  { sprint: 1, id: 'ST-02',      name: 'Roles + bootstrap',             lane: 'infra',      h: 5,   status: 'todo' },
+  { sprint: 1, id: 'ST-15',      name: 'Starter harness',               lane: 'harness',    h: 4,   status: 'todo' },
+  { sprint: 1, id: 'ST-03',      name: 'Backend scaffold',              lane: 'backend',    h: 5,   crit: true, status: 'todo' },
+  { sprint: 1, id: 'ST-04',      name: 'Frontend scaffold',             lane: 'frontend',   h: 5,   status: 'todo' },
+  { sprint: 1, id: 'ST-05',      name: 'Data layer',                    lane: 'backend',    h: 3,   status: 'todo' },
+  { sprint: 1, id: 'ST-06.7+.1', name: 'Port, fake, harness client',    lane: 'backend',    h: 3,   crit: true, status: 'todo' },
+  { sprint: 1, id: 'ST-06.2–.8', name: 'Runtime, SSE, tools, history',  lane: 'backend',    h: 7,   crit: true, status: 'todo' },
+  { sprint: 2, id: 'ST-10',      name: 'SSE contract tests',            lane: 'quality',    h: 2,   crit: true, status: 'todo' },
+  { sprint: 2, id: 'ST-07.1–.4', name: 'VPC, ECS, ALB, S3, CloudFront', lane: 'infra',      h: 6.5, status: 'todo' },
+  { sprint: 2, id: 'ST-07.5–.6', name: 'Secret, outputs, tests',        lane: 'infra',      h: 1.5, status: 'todo' },
+  { sprint: 2, id: 'ST-09',      name: 'Deploy pipeline',               lane: 'cicd',       h: 5,   status: 'todo' },
+  { sprint: 2, id: 'ST-08',      name: 'Cognito + SAML flag',           lane: 'auth',       h: 6,   ext: true, status: 'todo', demo: true },
+  { sprint: 2, id: 'ST-14',      name: 'Adoption guide',                lane: 'quality',    h: 2,   status: 'todo' },
+  { sprint: 2, id: 'ST-11',      name: 'Deploy validator',              lane: 'quality',    h: 3,   ext: true, status: 'todo', cut: true },
+  { sprint: 2, id: 'ST-13',      name: 'AgentCore tooling',             lane: 'harness',    h: 6,   ext: true, status: 'todo' },
+  { sprint: 2, id: 'ST-12',      name: 'Multi-env',                     lane: 'cicd',       h: 2,   ext: true, status: 'todo' },
+];
+// ----------------------------------------------------------------------------
+
+const DAYS = DAYS_PER_SPRINT * SPRINTS.length;
+const pct = d => (d / DAYS * 100) + '%';
+
+// Working days of the plan (skip weekends).
+const days = [];
+for (let d = new Date(SPRINT_START + 'T00:00'); days.length < DAYS; d.setDate(d.getDate() + 1))
+  if (d.getDay() % 6) days.push(new Date(d));
+
+// "Now" in plan days: whole working days elapsed plus the fraction of a 9:00–17:00 day.
+const params = new URLSearchParams(location.search);
+if (params.has('embed')) document.body.classList.add('embed');   // used by the presentation deck
+const q = params.get('today');
+const now = q ? new Date(q + 'T13:00') : new Date();
+let nowD = 0;
+for (const d of days) {
+  const start = new Date(d); start.setHours(9);
+  nowD += Math.min(Math.max((now - start) / 36e5 / 8, 0), 1);
+}
+
+// Place tickets: each sprint's hours are spread evenly over its days.
+SPRINTS.forEach((s, i) => {
+  const ks = TICKETS.filter(k => k.sprint === i + 1);
+  s.hours = ks.reduce((a, k) => a + k.h, 0);
+  let t = 0;
+  for (const k of ks) {
+    k.start = i * DAYS_PER_SPRINT + t / s.hours * DAYS_PER_SPRINT;
+    t += k.h;
+    k.end = i * DAYS_PER_SPRINT + t / s.hours * DAYS_PER_SPRINT;
+  }
+});
+for (const k of TICKETS) {
+  k.late = k.status !== 'done' && k.end <= nowD;
+  k.planned = k.h * Math.min(Math.max((nowD - k.start) / (k.end - k.start), 0), 1);
+}
+const TOTAL_H = TICKETS.reduce((a, k) => a + k.h, 0);
+
+const fmt = d => d.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short' });
+const short = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+const LINE = 30;
+
+let html = `<div class="row head sprints"><div class="name"></div><div class="track">${
+  SPRINTS.map(s => `<div><b>${s.name}</b><small>${s.board} · ${s.hours}h · ${s.goal}</small></div>`).join('')
+}</div><div class="sum"></div></div>`;
+html += `<div class="row head"><div class="name">Track</div><div class="track">${
+  days.map((d, i) => `<div class="${i % 5 === 0 && i ? 'wk' : ''}"><b>D${i + 1}</b>${short(d)}</div>`).join('')
+}</div><div class="sum">Progress</div></div><div class="body">`;
+
+html += `<div class="row miles"><div class="name" style="font-weight:400;color:#6b7280;font-size:12px">Milestones</div><div class="track"></div><div class="sum"></div></div>`;
+
+for (const lane of LANES) {
+  const ks = TICKETS.filter(k => k.lane === lane.id);
+  const done = ks.filter(k => k.status === 'done').reduce((s, k) => s + k.h, 0);
+  const all = ks.reduce((s, k) => s + k.h, 0);
+  const items = ks.map((k, i) => {
+    const top = 5 + i * LINE;
+    // Label sits right of the bar, or left of it when the bar is near the end of the plan.
+    const pos = k.end > DAYS * 0.72 ? `right:calc(${pct(DAYS - k.start)} + 6px)` : `left:calc(${pct(k.end)} + 6px)`;
+    const tags = `${k.ext ? ' · ext' : ''}${k.late ? ' · <span class="late">late</span>' : ''}`;
+    return `<div class="bar ${k.status} ${k.ext ? 'ext' : ''} ${k.crit ? 'crit' : ''} ${k.late ? 'late' : ''}"
+        style="--c:${lane.c};--bg:${lane.bg};top:${top}px;left:calc(${pct(k.start)} + 1px);width:calc(${pct(k.end - k.start)} - 2px)"
+        title="${k.id} ${k.name} · ${k.h}h · ${k.status}${k.crit ? ' · critical path' : ''}"></div>
+      <div class="lbl" style="top:${top}px;${pos}"><b>${k.id}</b> ${k.name} · ${k.h}h${tags}</div>`;
+  }).join('');
+  html += `<div class="row"><div class="name"><span class="dot" style="background:${lane.c}"></span>${lane.name}</div>
+    <div class="track" style="height:${ks.length * LINE + 10}px">${items}</div>
+    <div class="sum">${done}/${all}h<div class="meter"><i style="width:${all ? done / all * 100 : 0}%"></i></div></div></div>`;
+}
+
+// Overlay (cut-line band, milestones, today) spans the track column of the body only.
+const demo = TICKETS.find(k => k.demo).end, cut = TICKETS.find(k => k.cut).start;
+const markers = [
+  { at: DAYS_PER_SPRINT, label: 'Sprint 1 end: runs locally', left: true, cls: 'sprint' },
+  { at: demo, label: 'Demo: deployed + auth + streaming', left: true },
+  { at: DAYS, label: 'Plan end', left: true },
+];
+html += `<div class="overlay">
+  <div class="cut" style="left:${pct(cut)};width:${pct(DAYS - cut)}"></div>
+  ${markers.map(m => `<div class="vline ${m.left ? 'left' : ''} ${m.cls || ''}" style="left:${pct(m.at)}"><span>${m.label}</span></div>`).join('')}
+  ${nowD > 0 && nowD < DAYS ? `<div class="vline ${nowD > DAYS * 0.72 ? 'left' : ''} today" style="left:${pct(nowD)}"><span>Today</span></div>` : ''}
+</div></div>`;
+document.getElementById('chart').innerHTML = html;
+
+// KPIs: planned progress by today vs actual progress.
+const doneH = TICKETS.filter(k => k.status === 'done').reduce((s, k) => s + k.h, 0);
+const planned = TICKETS.reduce((s, k) => s + k.planned, 0);
+const late = TICKETS.filter(k => k.late).length;
+const day = Math.floor(nowD) + 1;
+const where = nowD <= 0 ? `Starts ${fmt(days[0])}`
+  : nowD >= DAYS ? 'Plan complete'
+  : `${SPRINTS[Math.floor(nowD / DAYS_PER_SPRINT)].name} · day ${day} of ${DAYS}`;
+document.getElementById('kpis').innerHTML = [
+  [where, 'where we are'],
+  [`${Math.round(planned / TOTAL_H * 100)}%`, `planned by today (${planned.toFixed(1)}h)`],
+  [`${Math.round(doneH / TOTAL_H * 100)}%`, `actually done (${doneH}h)`],
+  [late, late === 1 ? 'ticket behind plan' : 'tickets behind plan'],
+].map(([b, s]) => `<div class="kpi"><b>${b}</b><span>${s}</span></div>`).join('');
+</script>
+</body>
+</html>

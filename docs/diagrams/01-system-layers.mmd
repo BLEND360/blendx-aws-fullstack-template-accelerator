@@ -1,0 +1,233 @@
+%% AWS Fullstack Template — System architecture, all layers
+%% Import into Lucidchart: File > Import Diagram > Mermaid, or paste into
+%% the Mermaid panel. Expect to adjust layout after import.
+%% Source of truth: docs/aws-fullstack-template/02-architecture-model.md
+
+flowchart TB
+
+%% ══════════════════════════════════════════════════════════════════
+%% L1 — CLIENT
+%% ══════════════════════════════════════════════════════════════════
+subgraph L1["L1 · CLIENT — React SPA, static assets only"]
+  direction TB
+  C_PAGES["Pages and components<br/>src/pages · src/components"]
+  C_AUTH["AuthProvider<br/>OIDC Authorization Code + PKCE"]
+  C_GUARD["ProtectedRoute<br/>route guard"]
+  C_FETCH["apiFetch<br/>attaches app JWT · parses error shape"]
+  C_SSE["SSE consumer<br/>fetch-event-source · POST + Bearer"]
+  C_QUERY["React Query<br/>cacheable server state"]
+  C_TOKENS["Design tokens<br/>src/tokens · swappable"]
+
+  C_AUTH --> C_GUARD
+  C_GUARD --> C_PAGES
+  C_PAGES --> C_QUERY
+  C_QUERY --> C_FETCH
+  C_PAGES --> C_SSE
+  C_TOKENS --- C_PAGES
+  C_AUTH -. "app JWT from sessionStorage" .-> C_FETCH
+  C_AUTH -. "app JWT" .-> C_SSE
+end
+
+%% ══════════════════════════════════════════════════════════════════
+%% L0a — EDGE
+%% ══════════════════════════════════════════════════════════════════
+subgraph EDGE["L0 · EDGE — the only public surface"]
+  direction TB
+  CF["CloudFront distribution<br/>single public entry point"]
+  CF_B1["Behavior: default<br/>cached · origin = S3"]
+  CF_B2["Behavior: /api/*<br/>uncached · all methods · forward viewer"]
+  CF_B3["Behavior: /auth/*<br/>uncached · all methods"]
+  CF_B4["Behavior: /health<br/>uncached"]
+  CF_ERR["Error responses<br/>403 and 404 rewrite to /index.html as 200"]
+  S3[("S3 bucket — private<br/>block all public access<br/>origin access control")]
+  ALB["Application Load Balancer<br/>INTERNAL · not internet-facing"]
+  SG1["SG: ALB<br/>ingress TCP 80 from<br/>CloudFront prefix list only"]
+  SG2["SG: task<br/>ingress TCP 8000 from<br/>ALB security group only"]
+
+  CF --> CF_B1
+  CF --> CF_B2
+  CF --> CF_B3
+  CF --> CF_B4
+  CF --- CF_ERR
+  CF_B1 --> S3
+  CF_B2 --> ALB
+  CF_B3 --> ALB
+  CF_B4 --> ALB
+  SG1 --- ALB
+end
+
+%% ══════════════════════════════════════════════════════════════════
+%% L2 — API
+%% ══════════════════════════════════════════════════════════════════
+subgraph L2["L2 · API — FastAPI on ECS Fargate, port 8000"]
+  direction TB
+
+  subgraph L2MW["Middleware — registration order matters"]
+    A_CORS["CORS<br/>registered last = outermost<br/>so headers reach error responses"]
+    A_CID["Correlation id<br/>X-Request-Id in, out, and on every log line"]
+    A_EXC["Exception handlers<br/>one response shape for every failure"]
+  end
+
+  subgraph L2R["Routers — HTTP concerns only"]
+    R_HEALTH["health<br/>GET /health · GET /ready"]
+    R_AUTH["auth<br/>POST /auth/login · GET /auth/me"]
+    R_CONF["configuration<br/>GET /api/v1/configuration"]
+    R_SESS["sessions<br/>create · list · read · history<br/>messages SSE · delete"]
+    R_ITEMS["items<br/>example CRUD"]
+  end
+
+  subgraph L2S["Services — business logic"]
+    S_AUTH["auth_service<br/>login · current user"]
+    S_SESS["sessions_service<br/>ownership · lifecycle"]
+    S_CHAT["chat_service<br/>orchestrates one turn<br/>emits the chunk sequence"]
+    S_ITEMS["items_service"]
+  end
+
+  subgraph L2C["Core"]
+    K_CONF["config<br/>typed settings · validated at import"]
+    K_SEC["security<br/>Cognito JWKS verify · app JWT mint and verify"]
+    K_ERR["errors<br/>taxonomy: dependency_category + retryable"]
+    K_LOG["logging<br/>structured JSON"]
+  end
+
+  A_CORS --> A_CID
+  A_CID --> A_EXC
+  A_EXC --> R_HEALTH
+  A_EXC --> R_AUTH
+  A_EXC --> R_CONF
+  A_EXC --> R_SESS
+  A_EXC --> R_ITEMS
+
+  R_AUTH --> S_AUTH
+  R_SESS --> S_SESS
+  R_SESS --> S_CHAT
+  R_ITEMS --> S_ITEMS
+  R_CONF --> K_CONF
+
+  S_AUTH --- K_SEC
+  A_EXC --- K_ERR
+  A_CID --- K_LOG
+end
+
+%% ══════════════════════════════════════════════════════════════════
+%% L3 — DATA
+%% ══════════════════════════════════════════════════════════════════
+subgraph L3["L3 · DATA — product metadata only, never conversation content"]
+  direction TB
+  D_REPO_S["session_repository<br/>optimistic concurrency on revision"]
+  D_REPO_I["item_repository<br/>worked example of the pattern"]
+  D_T_SESS[("DynamoDB table: sessions<br/>PK owner_id · SK session_id<br/>resolved_config · memory_ref")]
+  D_T_ITEM[("DynamoDB table: items<br/>PK owner_id · SK item_id")]
+  D_NOTE["No connection string, no pool.<br/>HTTPS API · auth from the task role"]
+
+  D_REPO_S --> D_T_SESS
+  D_REPO_I --> D_T_ITEM
+  D_NOTE --- D_REPO_S
+end
+
+%% ══════════════════════════════════════════════════════════════════
+%% L4 — HARNESS INTEGRATION
+%% ══════════════════════════════════════════════════════════════════
+subgraph L4["L4 · HARNESS INTEGRATION — the differentiating layer"]
+  direction TB
+  H_RUN["runtime.py<br/>merge defaults + overrides<br/>validate model against allowlist<br/>resolve ids to executable refs<br/>FREEZE the snapshot"]
+  H_CLI["client.py<br/>invoke by (ARN, endpoint) · stream<br/>blocking SDK iterator to async generator<br/>worker thread + queue · request id rebound<br/>page memory events · classify AWS errors"]
+  H_STR["streaming.py<br/>chunk vocabulary:<br/>delta · tool_started · tool_input<br/>tool_finished · done · error"]
+  H_REG["tools/registry.py<br/>TOOLS schemas + TOOL_DISPATCH map"]
+  H_EX["tools/example.py<br/>one worked tool + its test"]
+  H_RULE["Invariant: resolves (ARN, endpoint) from config<br/>and nothing else, so the harness<br/>is replaceable by configuration"]
+
+  H_RUN --> H_CLI
+  H_CLI --> H_STR
+  H_CLI <--> H_REG
+  H_REG --- H_EX
+  H_RULE --- H_CLI
+end
+
+%% ══════════════════════════════════════════════════════════════════
+%% MANAGED AWS SERVICES
+%% ══════════════════════════════════════════════════════════════════
+subgraph PLAT["L0 · MANAGED SERVICES"]
+  direction TB
+  P_COG["Cognito user pool<br/>public PKCE client · hosted login<br/>access group · pre-token Lambda gate"]
+  P_IDP["Corporate IdP via SAML<br/>optional, flag-driven"]
+  P_SEC["Secrets Manager<br/>app JWT signing key<br/>generated by CDK · injected by ECS"]
+  P_LOGS["CloudWatch Logs<br/>one group per service"]
+  P_ECR["ECR<br/>immutable tags sha-runattempt"]
+  P_IAM["IAM task role<br/>scoped to named tables,<br/>the named secret, the named harness"]
+
+  P_IDP -. "SAML assertion" .-> P_COG
+end
+
+%% ══════════════════════════════════════════════════════════════════
+%% AGENT PLATFORM
+%% ══════════════════════════════════════════════════════════════════
+subgraph AGENT["AGENT PLATFORM — own stack, reached by (ARN, endpoint)"]
+  direction TB
+  G_HAR["AgentCore Harness<br/>starter: model + managed memory<br/>immutable versions · STAGING/PROD endpoints<br/>replaceable via project.toml"]
+  G_MEM[("Managed memory<br/>OWNS conversation content:<br/>messages · responses · tool interactions")]
+  G_MODEL["Bedrock model<br/>from the backend allowlist"]
+  G_FUT["Deferred to ST-13:<br/>gateways · MCP runtimes<br/>knowledge bases · skills · schedulers"]
+
+  G_HAR --- G_MEM
+  G_HAR --> G_MODEL
+  G_HAR -.-> G_FUT
+end
+
+%% ══════════════════════════════════════════════════════════════════
+%% CROSS-LAYER RELATIONSHIPS
+%% ══════════════════════════════════════════════════════════════════
+
+C_FETCH -->|"HTTPS · same origin"| CF
+C_SSE -->|"HTTPS · SSE over POST"| CF
+C_AUTH -->|"redirect to hosted login"| P_COG
+S3 -.->|"index.html + bundle"| C_PAGES
+
+ALB -->|"HTTP :8000 · target group<br/>health check /health"| A_CORS
+
+S_SESS --> D_REPO_S
+S_ITEMS --> D_REPO_I
+S_CHAT -->|"load frozen snapshot"| D_REPO_S
+S_CHAT -->|"invoke and consume stream"| H_RUN
+R_SESS -->|"emit SSE to client"| H_STR
+
+K_SEC -.->|"fetch JWKS · verify iss and aud"| P_COG
+K_CONF -.->|"APP_JWT_SECRET"| P_SEC
+K_LOG -.-> P_LOGS
+
+H_CLI -->|"invoke by (ARN, endpoint) · streaming"| G_HAR
+H_CLI -->|"page conversation events"| G_MEM
+
+P_IAM -.->|"grants"| D_T_SESS
+P_IAM -.->|"grants"| D_T_ITEM
+P_IAM -.->|"grants invoke"| G_HAR
+P_ECR -.->|"task image"| L2
+
+%% ══════════════════════════════════════════════════════════════════
+%% STYLING — Blend palette, light mode
+%% Washed Blue #053057 · Dark Gray #1a1a1a · Off White #f5f5f5
+%% Gray #64748b · Neon Turquoise #00EDED used as stroke accent only
+%% ══════════════════════════════════════════════════════════════════
+classDef app fill:#ffffff,stroke:#053057,stroke-width:1px,color:#053057
+classDef store fill:#f5f5f5,stroke:#053057,stroke-width:1px,color:#053057
+classDef managed fill:#f5f5f5,stroke:#64748b,stroke-width:1px,color:#1a1a1a
+classDef accent fill:#ffffff,stroke:#00EDED,stroke-width:2px,color:#053057
+classDef note fill:#f5f5f5,stroke:#64748b,stroke-width:1px,color:#64748b
+
+class C_PAGES,C_AUTH,C_GUARD,C_FETCH,C_SSE,C_QUERY,C_TOKENS app
+class CF,CF_B1,CF_B2,CF_B3,CF_B4,CF_ERR,ALB,SG1,SG2 app
+class A_CORS,A_CID,A_EXC,R_HEALTH,R_AUTH,R_CONF,R_SESS,R_ITEMS app
+class S_AUTH,S_SESS,S_CHAT,S_ITEMS,K_CONF,K_SEC,K_ERR,K_LOG app
+class D_REPO_S,D_REPO_I app
+class S3,D_T_SESS,D_T_ITEM,G_MEM store
+class H_RUN,H_CLI,H_STR,H_REG,H_EX accent
+class P_COG,P_IDP,P_SEC,P_LOGS,P_ECR,P_IAM,G_HAR,G_MODEL,G_FUT managed
+class D_NOTE,H_RULE note
+
+%% Subgraphs are styled explicitly: Mermaid's default cluster fill is a cream
+%% that is not in the Blend palette. Nested groups take the off-white fill so
+%% they read against their parent.
+classDef group fill:#ffffff,stroke:#64748b,stroke-width:1px,color:#053057
+classDef groupNested fill:#f5f5f5,stroke:#64748b,stroke-width:1px,color:#053057
+class L1,EDGE,L2,L3,L4,PLAT,AGENT group
+class L2MW,L2R,L2S,L2C groupNested

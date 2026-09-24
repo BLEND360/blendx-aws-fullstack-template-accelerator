@@ -1,0 +1,69 @@
+%% AWS Fullstack Template — One streamed agent turn, end to end
+%% Import into Lucidchart: File > Import Diagram > Mermaid.
+%% This is the path that crosses every layer, so it is the best single
+%% picture of how the layers actually relate at runtime.
+
+sequenceDiagram
+    autonumber
+    participant B as Browser SPA
+    participant CF as CloudFront
+    participant ALB as Internal ALB
+    participant R as Router L2
+    participant S as chat_service L2
+    participant D as session_repository L3
+    participant RT as runtime.py L4
+    participant HC as client.py L4
+    participant H as AgentCore Harness
+    participant M as Managed memory
+
+    Note over B,M: Precondition — the session already exists and its runtime config was frozen at creation
+
+    B->>CF: POST /api/v1/sessions/{id}/messages<br/>body {"message":"..."}<br/>Authorization Bearer app JWT
+    Note right of B: The ONLY things the browser sends:<br/>message text and an opaque session id
+    CF->>ALB: behavior /api/* — uncached, forwards viewer request
+    ALB->>R: HTTP :8000
+
+    R->>R: verify app JWT, extract owner from sub
+    R->>S: handle_message(owner, session_id, text)
+
+    S->>D: get(owner_id, session_id)
+    D-->>S: session row or key miss
+    Note over S,D: Ownership is the partition key.<br/>Missing and foreign both return 404 —<br/>the client cannot tell them apart.
+
+    S->>RT: load frozen snapshot
+    RT-->>S: resolved config — model, tool refs, system prompt, memory_ref
+    Note over RT: Nothing is re-resolved here.<br/>Later edits to the source config<br/>cannot reach a live session.
+
+    S->>HC: invoke(harness_arn, config, memory_ref, text)
+    HC->>H: streaming invoke
+
+    Note over HC: Bridge — the SDK iterator blocks,<br/>SSE needs async. Worker thread + queue,<br/>request id rebound inside the thread.
+
+    H-->>HC: text chunk
+    HC-->>R: chunk
+    R-->>B: SSE delta
+
+    H-->>HC: tool call request
+    HC-->>R: chunk
+    R-->>B: SSE tool_started
+    HC->>HC: dispatch to local Python function<br/>via TOOL_DISPATCH
+    R-->>B: SSE tool_input
+    HC->>H: tool result
+    R-->>B: SSE tool_finished
+    Note over HC,H: A failing or unknown tool becomes a tool<br/>RESULT the model can explain or route around,<br/>never an exception that ends the turn.
+
+    H-->>HC: text chunk
+    R-->>B: SSE delta
+
+    H->>M: append the turn's events
+    Note over M: Managed memory owns conversation content.<br/>DynamoDB never stores it.
+
+    H-->>HC: end of stream
+    R-->>B: SSE done
+
+    alt failure mid-stream
+        H-->>HC: botocore error
+        HC->>HC: classify — dependency_category + retryable<br/>log the original against the request id
+        R-->>B: SSE error {code, retryable, requestId}
+        Note over B: Partial text already streamed is PRESERVED.<br/>A dropped connection never erases a partial answer.<br/>The HTTP status went out with the first byte,<br/>so the taxonomy has to travel in the body.
+    end
