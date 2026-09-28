@@ -6,6 +6,7 @@ name        = "my-app"          # lowercase letters, digits, hyphens; 3-24 chars
 aws_account = "123456789012"
 aws_region  = "us-east-1"
 github_org  = "BLEND360"
+github_repo = "my-app"          # repository the deploy role trusts (GitHub OIDC)
 
 [harness]
 # Leave empty to deploy and use the template's starter harness.

@@ -8,6 +8,7 @@ name = "acme-portal"
 aws_account = "111122223333"
 aws_region = "eu-west-1"
 github_org = "ACME"
+github_repo = "portal"
 
 [harness]
 arn = ""
@@ -67,6 +68,7 @@ def test_environments_parsed(tmp_path):
         ('name = "acme-portal"', 'name = "' + "a" * 25 + '"'),
         ('aws_account = "111122223333"', 'aws_account = "123"'),
         ('aws_region = "eu-west-1"', 'aws_region = "europe"'),
+        ('github_repo = "portal"', 'github_repo = "*"'),
         ('model_ids = ["model-a", "model-b"]', "model_ids = []"),
         ('model_id = "model-a"', 'model_id = "model-z"'),
     ],

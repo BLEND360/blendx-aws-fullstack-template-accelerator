@@ -1,0 +1,12 @@
+{
+  "app": "uv run python app.py",
+  "watch": {
+    "include": ["**"],
+    "exclude": ["**/__pycache__", "tests/**"]
+  },
+  "context": {
+    "@aws-cdk/core:checkSecretUsage": true,
+    "@aws-cdk/core:target-partitions": ["aws"],
+    "@aws-cdk/aws-iam:minimizePolicies": true
+  }
+}

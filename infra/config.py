@@ -16,6 +16,8 @@ PROJECT_TOML = Path(__file__).resolve().parent.parent / "project.toml"
 _NAME = re.compile(r"^[a-z](?!.*--)[a-z0-9-]{1,22}[a-z0-9]$")
 _ACCOUNT = re.compile(r"^\d{12}$")
 _REGION = re.compile(r"^[a-z]{2}(-[a-z]+)+-\d$")
+# No wildcards: these go into the OIDC trust policy.
+_GITHUB = re.compile(r"^[A-Za-z0-9._-]+$")
 
 # Platform convention (01-technical-proposal.md §2.4): the harness lives at
 # harness/app/assistant/ and its CloudFormation outputs are Harness<Pascal>*.
@@ -36,6 +38,7 @@ class Config:
     aws_account: str
     aws_region: str
     github_org: str
+    github_repo: str
     harness_arn: str
     harness_endpoint: str
     harness_model_id: str
@@ -58,6 +61,9 @@ class Config:
     @property
     def app_stack(self) -> str:
         return f"{self.name}-app"
+
+    def role_arn(self, role_name: str) -> str:
+        return f"arn:aws:iam::{self.aws_account}:role/{role_name}"
 
     # Compute
     @property
@@ -131,6 +137,7 @@ def load(path: Path = PROJECT_TOML) -> Config:
         aws_account=str(project["aws_account"]),
         aws_region=project["aws_region"],
         github_org=project["github_org"],
+        github_repo=project["github_repo"],
         harness_arn=harness.get("arn", ""),
         harness_endpoint=harness["endpoint"],
         harness_model_id=harness["model_id"],
@@ -145,6 +152,8 @@ def load(path: Path = PROJECT_TOML) -> Config:
         errors.append(f"project.aws_account {config.aws_account!r}: must be 12 digits")
     if not _REGION.match(config.aws_region):
         errors.append(f"project.aws_region {config.aws_region!r}: not an AWS region")
+    if not _GITHUB.match(config.github_org) or not _GITHUB.match(config.github_repo):
+        errors.append("project.github_org / github_repo: letters, digits, '.', '_', '-' only")
     if not config.model_ids:
         errors.append("harness.model_ids: must list at least one model")
     if config.deploys_starter_harness and config.harness_model_id not in config.model_ids:

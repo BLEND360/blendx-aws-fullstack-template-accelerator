@@ -140,7 +140,8 @@ for (let d = new Date(SPRINT_START + 'T00:00'); days.length < DAYS; d.setDate(d.
 
 // "Now" in plan days: whole working days elapsed plus the fraction of a 9:00–17:00 day.
 const params = new URLSearchParams(location.search);
-if (params.has('embed')) document.body.classList.add('embed');   // used by the presentation deck
+const EMBED = params.has('embed');   // used by the presentation deck: no hour figures
+if (EMBED) document.body.classList.add('embed');
 const q = params.get('today');
 const now = q ? new Date(q + 'T13:00') : new Date();
 let nowD = 0;
@@ -171,7 +172,7 @@ const short = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric
 const LINE = 30;
 
 let html = `<div class="row head sprints"><div class="name"></div><div class="track">${
-  SPRINTS.map(s => `<div><b>${s.name}</b><small>${s.board} · ${s.hours}h · ${s.goal}</small></div>`).join('')
+  SPRINTS.map(s => `<div><b>${s.name}</b><small>${s.board} · ${EMBED ? '' : s.hours + 'h · '}${s.goal}</small></div>`).join('')
 }</div><div class="sum"></div></div>`;
 html += `<div class="row head"><div class="name">Track</div><div class="track">${
   days.map((d, i) => `<div class="${i % 5 === 0 && i ? 'wk' : ''}"><b>D${i + 1}</b>${short(d)}</div>`).join('')
@@ -191,11 +192,11 @@ for (const lane of LANES) {
     return `<div class="bar ${k.status} ${k.ext ? 'ext' : ''} ${k.crit ? 'crit' : ''} ${k.late ? 'late' : ''}"
         style="--c:${lane.c};--bg:${lane.bg};top:${top}px;left:calc(${pct(k.start)} + 1px);width:calc(${pct(k.end - k.start)} - 2px)"
         title="${k.id} ${k.name} · ${k.h}h · ${k.status}${k.crit ? ' · critical path' : ''}"></div>
-      <div class="lbl" style="top:${top}px;${pos}"><b>${k.id}</b> ${k.name} · ${k.h}h${tags}</div>`;
+      <div class="lbl" style="top:${top}px;${pos}"><b>${k.id}</b> ${k.name}${EMBED ? '' : ` · ${k.h}h`}${tags}</div>`;
   }).join('');
   html += `<div class="row"><div class="name"><span class="dot" style="background:${lane.c}"></span>${lane.name}</div>
     <div class="track" style="height:${ks.length * LINE + 10}px">${items}</div>
-    <div class="sum">${done}/${all}h<div class="meter"><i style="width:${all ? done / all * 100 : 0}%"></i></div></div></div>`;
+    <div class="sum">${EMBED ? Math.round(all ? done / all * 100 : 0) + '%' : `${done}/${all}h`}<div class="meter"><i style="width:${all ? done / all * 100 : 0}%"></i></div></div></div>`;
 }
 
 // Overlay (cut-line band, milestones, today) spans the track column of the body only.
@@ -222,8 +223,8 @@ const where = nowD <= 0 ? `Starts ${fmt(days[0])}`
   : `${SPRINTS[Math.floor(nowD / DAYS_PER_SPRINT)].name} · day ${day} of ${DAYS}`;
 document.getElementById('kpis').innerHTML = [
   [where, 'where we are'],
-  [`${Math.round(planned / TOTAL_H * 100)}%`, `planned by today (${planned.toFixed(1)}h)`],
-  [`${Math.round(doneH / TOTAL_H * 100)}%`, `actually done (${doneH}h)`],
+  [`${Math.round(planned / TOTAL_H * 100)}%`, EMBED ? 'planned by today' : `planned by today (${planned.toFixed(1)}h)`],
+  [`${Math.round(doneH / TOTAL_H * 100)}%`, EMBED ? 'actually done' : `actually done (${doneH}h)`],
   [late, late === 1 ? 'ticket behind plan' : 'tickets behind plan'],
 ].map(([b, s]) => `<div class="kpi"><b>${b}</b><span>${s}</span></div>`).join('');
 </script>

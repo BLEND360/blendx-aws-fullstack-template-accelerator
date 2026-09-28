@@ -122,6 +122,16 @@
   /* section label */
   .sec-label { font-size:10px; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:var(--ink-faint); margin-bottom:5px; }
 
+  /* full-size diagram */
+  .diagram { flex:1; min-height:280px; display:flex; border:1px solid var(--line); border-radius:var(--r); padding:16px; background:var(--panel); box-shadow:var(--shadow-sm); }
+  .diagram svg { width:100%; height:100%; display:block; }
+
+  /* larger tables for the work breakdown */
+  .big .cmp { font-size:15px; }
+  .big .cmp th, .big .cmp td { padding:.6rem .95rem; }
+  .big .stat b { font-size:34px; }
+  .big .stat span { font-size:13px; }
+
   /* timeline embed */
   .embed { flex:1; min-height:420px; border:1px solid var(--line); border-radius:var(--r); overflow:hidden; box-shadow:var(--shadow-sm); }
   .embed iframe { width:100%; height:100%; border:0; display:block; }
@@ -152,77 +162,8 @@
     <p style="font-size:15px;color:var(--ink-soft);line-height:1.6;max-width:56ch;margin:0 0 22px;">A repository a team clones to get a deployed, authenticated fullstack application whose business logic already calls an AgentCore harness. Day one, no prior AWS setup, no "first, go get a harness" step.</p>
     <div style="display:flex;flex-direction:column;gap:4px;">
       <div class="meta-line">BlendX · Agent Engineering Platform · Internal · September 2026</div>
-      <div class="meta-line">Author: <code>Juan Andrés Bolaño</code> · Status: <code>Proposal for review</code> · Plan: <code>2 sprints · 70h</code></div>
+      <div class="meta-line">Author: <code>Juan Andrés Bolaño</code> · Status: <code>Proposal for review</code> · Plan: <code>2 sprints</code></div>
     </div>
-  </div>
-</section>
-
-
-<!-- 2 · THE PROBLEM -->
-<section class="slide">
-  <p class="kicker">The Problem</p>
-  <h2>Every AWS team pays the same first weeks</h2>
-  <p class="intro">Before a line of product code, a new AWS app at Blend has to solve private ingress, IAM, container builds, keyless CI/CD and SSO. If there's an agent in it, it also has to stream a harness response to a browser without leaking infrastructure to the client. The Snowflake vertical has a template for this. The AWS vertical doesn't.</p>
-
-  <div class="three-col" style="margin-bottom:14px;">
-    <div class="ap sky">
-      <h3><span class="chip chip-sky">Invisible coupling</span></h3>
-      <p>The MVP is two repos. The backend stack creates the frontend's bucket and CDN, and the frontend can't deploy without it. That dependency is real, but you can't see it from either repo.</p>
-    </div>
-    <div class="ap sky">
-      <h3><span class="chip chip-sky">Scattered literals</span></h3>
-      <p>The same values are written in several places: <code>ALLOWED_MODEL_IDS</code> in three files, plus the project name, table names and pool id, each with a comment warning they must stay in sync.</p>
-    </div>
-    <div class="ap sky">
-      <h3><span class="chip chip-sky">Hand-made pieces</span></h3>
-      <p>Cognito was created in the console and its ids live in documentation. The first deploy relies on "an engineer runs <code>cdk deploy</code> locally once." Nothing a template can copy.</p>
-    </div>
-  </div>
-
-  <div class="callout">
-    <b>The opportunity:</b> the MVP already has a working version of almost all of this. The work is to <b>extract</b> it: keep what runs, drop the product domain and the migration workarounds, and put every value in a single file.
-  </div>
-</section>
-
-
-<!-- 3 · THE PROPOSAL -->
-<section class="slide">
-  <p class="kicker">The Proposal</p>
-  <h2>Clone, set four values, push</h2>
-  <p class="intro"><code>blendx-fullstack-aws-template</code> plays the role for AWS that <code>blendx-fullstack-app-template</code> plays for Snowflake/SPCS. The output is a running app on a private AWS topology with an agent responding.</p>
-
-  <div class="two-col" style="margin-bottom:14px;">
-    <div class="cb-wrap">
-      <div class="cb-top">adoption flow</div>
-      <div class="cb">1  gh repo create my-app --template BLEND360/blendx-fullstack-aws-template
-2  edit project.toml            <span class="c"># name, account, region</span>
-3  python scripts/setup.py      <span class="c"># renames everything, self-deletes</span>
-4  python scripts/bootstrap.py  <span class="c"># once per AWS account</span>
-5  git push origin main         <span class="c"># full deploy, agent included</span></div>
-    </div>
-    <div class="cb-wrap">
-      <div class="cb-top">repository shape — one monorepo</div>
-      <div class="cb">blendx-fullstack-aws-template/
-├── project.toml     <span class="c"># the only place names are written</span>
-├── backend/api/     <span class="c"># FastAPI — siblings = more services</span>
-├── frontend/web/    <span class="c"># Vite + React SPA</span>
-├── harness/         <span class="c"># starter harness: model + memory</span>
-├── infra/           <span class="c"># CDK (Python), one app</span>
-├── scripts/         <span class="c"># setup + one-time bootstrap</span>
-└── .github/workflows/</div>
-    </div>
-  </div>
-
-  <div class="cmp-wrap">
-    <table class="cmp">
-      <thead><tr><th>The team gets</th><th>What it is</th></tr></thead>
-      <tbody>
-        <tr><td>Application</td><td>React SPA, FastAPI backend, DynamoDB, with a worked example of every layer</td></tr>
-        <tr><td>Agent integration</td><td>Invoke a harness, stream the answer as SSE, dispatch tools, never let an AWS error reach the browser</td></tr>
-        <tr><td>Starter harness</td><td>Model + managed memory, deployed the way the platform deploys its own. Swapped for an existing one by changing two values</td></tr>
-        <tr><td>Infra + CI/CD</td><td>CDK for everything; GitHub Actions with OIDC, no long-lived AWS keys anywhere</td></tr>
-      </tbody>
-    </table>
   </div>
 </section>
 
@@ -231,10 +172,10 @@
 <section class="slide">
   <p class="kicker">Deployment Model</p>
   <h2>One public surface, everything else private</h2>
-  <p class="intro">CloudFront is the only public entry point. It serves the SPA from a private bucket through origin access control, and forwards API paths to an internal ALB through a VPC origin. Neither the bucket nor the load balancer is reachable from the internet.</p>
+  <p class="intro">CloudFront is the only public entry point. Neither the bucket nor the load balancer is reachable from the internet.</p>
 
-  <div style="border:1px solid var(--line);border-radius:var(--r);padding:16px;background:var(--panel);box-shadow:var(--shadow-sm);margin-bottom:14px;overflow-x:auto;">
-    <svg viewBox="0 0 760 290" xmlns="http://www.w3.org/2000/svg" style="width:100%;min-width:600px;display:block;">
+  <div class="diagram">
+    <svg viewBox="0 0 760 290" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
       <defs>
         <marker id="t1" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#94A3B8"/></marker>
       </defs>
@@ -290,21 +231,6 @@
       <text x="694" y="256" text-anchor="middle" font-size="8.5" fill="#7C3AED" font-family="ui-monospace,'SF Mono',monospace">+ managed memory</text>
     </svg>
   </div>
-
-  <div class="three-col">
-    <div class="ap lam">
-      <h3><span class="chip chip-lam">No reverse proxy</span></h3>
-      <p>The Snowflake template needs an Nginx container to route. On AWS, CloudFront behaviors do that job at no container CPU cost, and you get a CDN with it.</p>
-    </div>
-    <div class="ap lam">
-      <h3><span class="chip chip-lam">Dev = prod routing</span></h3>
-      <p>Vite's dev proxy mirrors the CloudFront paths. The SPA never needs an API base URL, so the template has no CORS configuration at all.</p>
-    </div>
-    <div class="ap lam">
-      <h3><span class="chip chip-lam">One stack per lifetime</span></h3>
-      <p>Roles, auth, data, harness and app each get their own stack. Rolling back the app can never delete user data.</p>
-    </div>
-  </div>
 </section>
 
 
@@ -343,7 +269,7 @@
   <p class="intro">This is the part of the MVP most worth extracting, and it's not a thin wrapper: ~1,200 lines across four files. It defines how custom business logic invokes a harness and streams the result to a browser. The browser sends only <code>{ "message": "..." }</code>.</p>
 
   <div style="border:1px solid var(--line);border-radius:var(--r);padding:16px;background:var(--panel);box-shadow:var(--shadow-sm);margin-bottom:14px;overflow-x:auto;">
-    <svg viewBox="0 0 740 110" xmlns="http://www.w3.org/2000/svg" style="width:100%;min-width:580px;display:block;">
+    <svg viewBox="0 0 740 110" xmlns="http://www.w3.org/2000/svg" style="width:100%;display:block;">
       <defs>
         <marker id="t2" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#CBD5E1"/></marker>
       </defs>
@@ -378,16 +304,7 @@
     </svg>
   </div>
 
-  <div class="two-col" style="margin-bottom:14px;">
-    <div class="cb-wrap">
-      <div class="cb-top">the published contract — pinned by tests on both sides (ST-10)</div>
-      <div class="cb">delta · tool_started · tool_input · tool_finished · done · error
-
-<span class="c"># mid-stream failure: no HTTP status left to set</span>
-{ "type": "error", "code": "harness_unavailable",
-  "retryable": true, "requestId": "…" }</div>
-    </div>
-    <div class="ap run">
+  <div class="ap run">
       <h3><span class="chip chip-run">The hard parts, already solved in the MVP</span></h3>
       <ul class="bl">
         <li>The blocking SDK iterator is bridged to an async generator, with the request id re-bound inside the worker thread</li>
@@ -396,168 +313,20 @@
         <li>An unknown or failing tool becomes a tool result sent to the model instead of an exception that ends the turn</li>
       </ul>
     </div>
-  </div>
-</section>
-
-
-<!-- 7 · RULES + BRING YOUR OWN HARNESS -->
-<section class="slide">
-  <p class="kicker">Security · Replaceability</p>
-  <h2>Three rules at the boundary, one config line to swap the agent</h2>
-  <p class="intro">The integration layer is written against a harness it <b>consumes</b>, never against infrastructure it owns. The template ships a minimal starter harness so a clone works on day one, but the app never depends on its shape.</p>
-
-  <div class="two-col" style="margin-bottom:14px;">
-    <div>
-      <div class="sec-label" style="margin-bottom:8px;">Rules the layer enforces</div>
-      <div class="gov-row">
-        <span class="gov-pill yes">Rule 1</span>
-        <div>
-          <div class="gov-q">The backend controls what the agent can do</div>
-          <div class="gov-a">The browser sends a message, ids and override values. It never sends an ARN, a memory coordinate, an S3 skill URI or an executable tool reference. Only the backend resolves an id to something executable.</div>
-        </div>
-      </div>
-      <div class="gov-row">
-        <span class="gov-pill yes">Rule 2</span>
-        <div>
-          <div class="gov-q">Frozen runtime snapshots</div>
-          <div class="gov-a">A session freezes its validated model, tools and prompt before the first turn. A later template edit can't reach into a running session.</div>
-        </div>
-      </div>
-      <div class="gov-row">
-        <span class="gov-pill yes">Rule 3</span>
-        <div>
-          <div class="gov-q">No upstream text reaches the client</div>
-          <div class="gov-a">A botocore message names the role, account and resource. It's mapped to a fixed sentence, a <code>&lt;dependency&gt;_&lt;category&gt;</code> code and a <code>retryable</code> flag, and the original is logged against the request id.</div>
-        </div>
-      </div>
-    </div>
-
-    <div style="display:flex;flex-direction:column;gap:12px;">
-      <div class="cb-wrap">
-        <div class="cb-top">project.toml — bring your own harness</div>
-        <div class="cb">[harness]
-arn      = ""      <span class="c"># empty → deploy the starter harness</span>
-endpoint = "PROD"  <span class="c"># which alias to invoke</span>
-model_id = "us.anthropic.claude-sonnet-4-5-…"</div>
-      </div>
-      <div class="cb-wrap">
-        <div class="cb-top">harness/app/assistant/harness.json — the whole starter harness</div>
-        <div class="cb">{
-  "name": "my_app",
-  "model": { "provider": "bedrock", "modelId": "…" },
-  "executionRoleArn": "arn:…",
-  "memory": { "mode": "managed" }
-}</div>
-      </div>
-    </div>
-  </div>
-
-  <div class="callout">
-    <b>Aligned with the platform:</b> immutable versions, aliases as environments, deployed with <code>agentcore validate / deploy</code> using the Hub's naming (<code>AgentCore-&lt;name&gt;-&lt;target&gt;</code>). Resolving <b>(ARN, endpoint)</b> instead of a bare ARN means staging, promotion and rollback are all a matter of repointing an endpoint. A template-born harness can move into the Hub later without being rebuilt.
-  </div>
-</section>
-
-
-<!-- 8 · ARCHITECTURE STANDARD -->
-<section class="slide">
-  <p class="kicker">Architecture Standard</p>
-  <h2>A modular monolith, hexagonal inside, delivered as a golden path</h2>
-  <p class="intro">Three choices, each answering a different question. The pattern isn't "the most sophisticated one available". It's the cheapest one that still makes the wrong thing awkward to build.</p>
-
-  <div class="three-col" style="margin-bottom:14px;">
-    <div class="ap lam">
-      <h3><span class="chip chip-lam">Deploy</span> Modular monolith</h3>
-      <p>One container, in folders that could each become a container. A two-person team ships without running a distributed system, and splitting a service out later is still possible.</p>
-    </div>
-    <div class="ap run">
-      <h3><span class="chip chip-run">Structure</span> Ports &amp; adapters</h3>
-      <p>Business logic never imports AWS. A declared <code>HarnessPort</code> plus a fake that replays a recorded stream means <b>the test suite passes with no AWS credentials</b>.</p>
-    </div>
-    <div class="ap hub">
-      <h3><span class="chip chip-hub">Adopt</span> Golden path</h3>
-      <p>Template + guardrails + CI gates. <code>import-linter</code> enforces the layers in CI in about fifteen lines of config, so the standard is executable, not prose.</p>
-    </div>
-  </div>
-
-  <div class="two-col">
-    <div class="cmp-wrap">
-      <table class="cmp">
-        <thead><tr><th>Rejected for v1</th><th>Adopt when</th></tr></thead>
-        <tbody>
-          <tr><td>Microservices</td><td>A module needs its own scaling, runtime or cadence</td></tr>
-          <tr><td>CQRS / event sourcing</td><td>Reads and writes diverge by 10×, or audit is mandatory</td></tr>
-          <tr><td>Message bus</td><td>A turn must outlive its request (scheduled agents)</td></tr>
-          <tr><td>Full Clean / DDD</td><td>The consumer's product has real invariants: their call</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <div class="cmp-wrap">
-      <table class="cmp">
-        <thead><tr><th>Routine change</th><th>Touches</th></tr></thead>
-        <tbody>
-          <tr><td>Give the agent a tool</td><td><code>tools/x.py</code> + 2 lines in the registry</td></tr>
-          <tr><td>Add a table / role</td><td>One entry in <code>infra/definitions/</code></td></tr>
-          <tr><td>Change the model</td><td><code>project.toml</code>, no code</td></tr>
-          <tr><td>Use an existing harness</td><td><code>project.toml</code>, no code</td></tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
-</section>
-
-
-<!-- 9 · EXTRACTION + DELIVERY -->
-<section class="slide">
-  <p class="kicker">Extraction · Delivery</p>
-  <h2>Extraction, not migration, and one ordered keyless deploy</h2>
-  <p class="intro">Nothing is lifted with its history or its workarounds. The MVP's app stack pins every logical id and deletes properties from the rendered template, because it was migrated onto a live stack. A greenfield template has no live stack, so those constructs stay in the MVP, where they're true.</p>
-
-  <div class="two-col" style="margin-bottom:14px;">
-    <div class="cmp-wrap">
-      <table class="cmp">
-        <thead><tr><th>From the MVP</th><th>Action</th></tr></thead>
-        <tbody>
-          <tr><td>Layering, logging, error taxonomy</td><td><span class="c-yes">Extract as-is</span></td></tr>
-          <tr><td>Harness client, resolver, tools, SSE</td><td><span class="c-yes">Extract + generalize</span></td></tr>
-          <tr><td>OIDC trust policy, immutable ECR tags</td><td><span class="c-yes">Extract</span></td></tr>
-          <tr><td>CloudFront + ALB + Fargate topology</td><td>Rebuild from the pattern</td></tr>
-          <tr><td>Console-created Cognito</td><td>Rebuild in CDK</td></tr>
-          <tr><td>Prompt-template product domain</td><td><span class="c-no">Drop</span></td></tr>
-          <tr><td>Pinned logical ids, egress overrides</td><td><span class="c-no">Drop</span></td></tr>
-        </tbody>
-      </table>
-    </div>
-    <div class="cb-wrap">
-      <div class="cb-top">.github/workflows/deploy.yml — one ordered chain</div>
-      <div class="cb">push → test (api, web, infra)
-     → roles      <span class="c"># IAM before anything references it</span>
-     → auth       <span class="c"># Cognito ids feed task + SPA build</span>
-     → data       <span class="c"># tables before the API points at them</span>
-     → harness    <span class="c"># skipped if project.toml names an ARN</span>
-     → image      <span class="c"># immutable tag &lt;sha&gt;-&lt;run_attempt&gt;</span>
-     → app stack  <span class="c"># ECS, ALB, S3, CloudFront</span>
-     → SPA publish + invalidate
-     → smoke test <span class="c"># asserts JSON, not just 200</span></div>
-    </div>
-  </div>
-
-  <div class="callout">
-    <b>Lessons the MVP learned the hard way, built in:</b> parallel path-triggered workflows let an image go live before its task role had its grants, so the template uses one ordered chain. A missing CloudFront behavior returns <b>200 with index.html</b>, so the smoke test checks the body. Declared SG egress was removed twice on rollback, so egress is left undeclared.
-  </div>
 </section>
 
 
 <!-- 10 · SCOPE & WORK BREAKDOWN -->
-<section class="slide">
+<section class="slide big">
   <p class="kicker">Work Breakdown</p>
-  <h2>15 scoped tickets, 70 committed hours</h2>
-  <p class="intro">Eleven tickets are the parent issue's literal scope. Four are extensions, recommended but deferrable without blocking a working template. All are filed in <code>blendx-aws-fullstack-template-accelerator</code> with hours, ranges and subtasks.</p>
+  <h2>15 scoped tickets across two sprints</h2>
+  <p class="intro">Eleven tickets are the parent issue's literal scope. Four are extensions, recommended but deferrable without blocking a working template. All are filed with estimates, ranges and subtasks. Estimates are ranges, not promises, and the plan is sized so that even their upper end fits.</p>
 
-  <div class="four-col" style="margin-bottom:14px;">
-    <div class="stat"><b>53h</b><span>core · 11 tickets · range 41–84h</span></div>
-    <div class="stat"><b>17h</b><span>extensions · 4 tickets · range 14–39h</span></div>
-    <div class="stat"><b>21h</b><span>critical path · ST-01 → 03 → 06 → 10</span></div>
-    <div class="stat"><b>123h</b><span>every range at its max, still &lt; 160h capacity</span></div>
+  <div class="four-col" style="margin-bottom:16px;">
+    <div class="stat"><b>15</b><span>tickets filed, with subtasks</span></div>
+    <div class="stat"><b>11 + 4</b><span>core + extensions (cut first)</span></div>
+    <div class="stat"><b>4</b><span>on the critical path · ST-01 → 03 → 06 → 10</span></div>
+    <div class="stat"><b>Fits</b><span>even if every estimate lands at its upper bound</span></div>
   </div>
 
   <div class="two-col">
@@ -565,14 +334,13 @@ model_id = "us.anthropic.claude-sonnet-4-5-…"</div>
       <table class="cmp">
         <thead><tr><th colspan="3">Sprint 1 (Sprint 25) · runs locally end to end</th></tr></thead>
         <tbody>
-          <tr><td>ST-01</td><td>Repo scaffold + <code>project.toml</code></td><td>4h</td></tr>
-          <tr><td>ST-02</td><td>Roles stack + account bootstrap</td><td>5h</td></tr>
-          <tr><td>ST-15</td><td>Starter harness</td><td>4h</td></tr>
-          <tr><td>ST-03</td><td>Backend scaffold</td><td>5h</td></tr>
-          <tr><td>ST-04</td><td>Frontend scaffold</td><td>5h</td></tr>
-          <tr><td>ST-05</td><td>Data layer: DynamoDB</td><td>3h</td></tr>
-          <tr><td>ST-06</td><td>Harness integration layer</td><td>10h</td></tr>
-          <tr class="tot"><td></td><td>Sprint 1</td><td>36h</td></tr>
+          <tr><td>ST-01</td><td>Repo scaffold + <code>project.toml</code></td><td>M</td></tr>
+          <tr><td>ST-02</td><td>Roles stack + account bootstrap</td><td>M</td></tr>
+          <tr><td>ST-15</td><td>Starter harness</td><td>M</td></tr>
+          <tr><td>ST-03</td><td>Backend scaffold</td><td>M</td></tr>
+          <tr><td>ST-04</td><td>Frontend scaffold</td><td>M</td></tr>
+          <tr><td>ST-05</td><td>Data layer: DynamoDB</td><td>S</td></tr>
+          <tr><td>ST-06</td><td>Harness integration layer</td><td>L</td></tr>
         </tbody>
       </table>
     </div>
@@ -580,17 +348,17 @@ model_id = "us.anthropic.claude-sonnet-4-5-…"</div>
       <table class="cmp">
         <thead><tr><th colspan="3">Sprint 2 (Sprint 26) · deployed, authenticated, hardened</th></tr></thead>
         <tbody>
-          <tr><td>ST-10</td><td>SSE contract tests</td><td>2h</td></tr>
-          <tr><td>ST-07</td><td>App stack: Fargate, ALB, S3, CF</td><td>8h</td></tr>
-          <tr><td>ST-09</td><td>CI/CD pipeline</td><td>5h</td></tr>
-          <tr><td>ST-08</td><td>Cognito + SAML flag <span class="chip chip-sky">ext</span></td><td>6h</td></tr>
-          <tr><td>ST-14</td><td>Adoption guide</td><td>2h</td></tr>
-          <tr><td>ST-11 · 13 · 12</td><td>Validator · AgentCore tools · multi-env <span class="chip chip-sky">ext</span></td><td>11h</td></tr>
-          <tr class="tot"><td></td><td>Sprint 2</td><td>34h</td></tr>
+          <tr><td>ST-10</td><td>SSE contract tests</td><td>S</td></tr>
+          <tr><td>ST-07</td><td>App stack: Fargate, ALB, S3, CloudFront</td><td>L</td></tr>
+          <tr><td>ST-09</td><td>CI/CD pipeline</td><td>M</td></tr>
+          <tr><td>ST-08</td><td>Cognito + SAML flag <span class="chip chip-sky">ext</span></td><td>M</td></tr>
+          <tr><td>ST-14</td><td>Adoption guide</td><td>S</td></tr>
+          <tr><td>ST-11 · 13 · 12</td><td>Validator · AgentCore tools · multi-env <span class="chip chip-sky">ext</span></td><td>S · L · S</td></tr>
         </tbody>
       </table>
     </div>
   </div>
+  <p class="intro" style="margin:12px 0 0;font-size:12.5px;">Size: S ≈ a morning · M ≈ a day · L ≈ two days of focused work.</p>
 </section>
 
 
@@ -598,7 +366,7 @@ model_id = "us.anthropic.claude-sonnet-4-5-…"</div>
 <section class="slide">
   <p class="kicker">Sprint Plan · Live</p>
   <h2>Two sprints, with room to absorb what goes wrong</h2>
-  <p class="intro" style="margin-bottom:10px;">About 3.5h of ticket work a day, and the rest is buffer. The sprint boundary follows the architecture: Sprint 1 is everything that runs on a laptop, Sprint 2 is everything that needs a deployed account. This is the live planning view: ticket status is updated in <code>sprint-timeline.html</code> and shows up here. <a href="sprint-timeline.html" target="_blank">Open full view ↗</a></p>
+  <p class="intro" style="margin-bottom:10px;">Both sprints carry deliberate buffer. The sprint boundary follows the architecture: Sprint 1 is everything that runs on a laptop, Sprint 2 is everything that needs a deployed account. This is the live planning view: ticket status is updated in <code>sprint-timeline.html</code> and shows up here. <a href="sprint-timeline.html" target="_blank">Open full view ↗</a></p>
   <div class="embed"><iframe src="sprint-timeline.html?embed=1" title="Sprint timeline"></iframe></div>
 </section>
 
