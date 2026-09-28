@@ -1,0 +1,27 @@
+# Single parameter source. Every resource name in every layer is derived from
+# this file by infra/config.py. Edit it, then run `python scripts/setup.py`.
+
+[project]
+name        = "my-app"          # lowercase letters, digits, hyphens; 3-24 chars
+aws_account = "123456789012"
+aws_region  = "us-east-1"
+github_org  = "BLEND360"
+
+[harness]
+# Leave empty to deploy and use the template's starter harness.
+# Set to an existing harness ARN to consume that one instead; the starter
+# harness is then not deployed.
+arn       = ""
+endpoint  = "PROD"   # which alias of that harness to invoke
+model_id  = "us.anthropic.claude-sonnet-4-5-20250929-v1:0"    # starter harness
+model_ids = ["us.anthropic.claude-sonnet-4-5-20250929-v1:0"]  # backend allowlist
+
+[environments.dev]
+desired_count = 1
+cpu           = 256
+memory        = 512
+
+[environments.prod]
+desired_count = 2
+cpu           = 512
+memory        = 1024
