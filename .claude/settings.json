@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(gh api repos/BLEND360/blendx-aws-foundry-infra/contents/hub/harnesses --jq '.[].path' 2>&1)",
+      "PowerShell(gh search code --owner BLEND360 \"point-harness-alias\" --json repository,path --jq '.[] | .repository.nameWithOwner + \" \" + .path' 2>&1)",
+      "PowerShell($r='repos/BLEND360/blendx-aws-foundry-infra/contents'; foreach \\($p in 'hub/scripts/deploy/harness/point-harness-alias.sh','hub/scripts/deploy/harness/wait-harness-ready.sh','.github/workflows/_harness-deployment.yml'\\) { \"===== $p\"; gh api \"$r/$p\" -H \"Accept: application/vnd.github.raw\" }; \"===== tree\"; gh api \"$r/hub/harnesses/project_assistant\" --jq '.[].path')",
+      "PowerShell($r='repos/BLEND360/blendx-aws-foundry-infra/contents'; \"===== get-harness-version\"; gh api \"$r/hub/scripts/deploy/harness/get-harness-version.sh\" -H \"Accept: application/vnd.github.raw\"; \"===== harness.json\"; gh api \"$r/hub/harnesses/project_assistant/app\" --jq '.[].path'; gh api \"$r/hub/harnesses/project_assistant/app/project_assistant/harness.json\" -H \"Accept: application/vnd.github.raw\"; \"===== agentcore dir\"; gh api \"$r/hub/harnesses/project_assistant/agentcore\" --jq '.[].path'; \"===== roles grep\"; gh api \"$r/infra/roles/definitions.py\" -H \"Accept: application/vnd.github.raw\" | Select-String -Pattern 'harness|Harness' -Context 0,0 | Select-Object -First 40)",
+      "PowerShell($t = gh api repos/BLEND360/blendx-aws-foundry-infra/contents/infra/roles/definitions.py -H \"Accept: application/vnd.github.raw\"; $t | Set-Content \"$env:TEMP\\\\foundry_roles.py\"; $lines = Get-Content \"$env:TEMP\\\\foundry_roles.py\"; $i = \\($lines | Select-String 'AllowReadHarnessOutputs|AllowManageHarnessEndpoints' | Select-Object -First 1\\).LineNumber; $lines[\\($i-15\\)..\\($i+45\\)]; \"===========\"; $j = \\($lines | Select-String 'agentcore_harness_role = RoleSpec'\\).LineNumber; $lines[\\($j-30\\)..\\($j+110\\)])",
+      "PowerShell($env:JSII_SILENCE_WARNING_UNTESTED_NODE_VERSION=1; $env:CDK_OUTDIR=\"$env:TEMP\\\\st15-out\"; node dist/bin/cdk.js 2>&1 | Select-Object -Last 20; Get-ChildItem $env:CDK_OUTDIR -Name -ErrorAction SilentlyContinue)",
+      "PowerShell($t = Get-Content \"$env:TEMP\\\\st15-out\\\\AgentCore-myapp-default.template.json\" -Raw | ConvertFrom-Json; \"--- resources\"; $t.Resources.PSObject.Properties | ForEach-Object { \"$\\($_.Name\\)  $\\($_.Value.Type\\)\" }; \"--- outputs\"; $t.Outputs.PSObject.Properties.Name; \"--- harness props\"; \\($t.Resources.PSObject.Properties | Where-Object { $_.Value.Type -eq 'AWS::BedrockAgentCore::Harness' }\\).Value.Properties | ConvertTo-Json -Depth 6)",
+      "PowerShell(Select-String -Path .claude/settings.json -Pattern 'my-?app' | ForEach-Object { $_.Line.Trim\\(\\) }; git check-ignore -v .claude/settings.local.json)",
+      "PowerShell(gh issue list --state open --search \"ST-03 in:title\" --json number,title,url --jq '.[] | \"#\\\\\\(.number\\) \\\\\\(.title\\) \\\\\\(.url\\)\"')"
+    ]
+  }
+}

@@ -5,3 +5,10 @@ __pycache__/
 node_modules/
 dist/
 cdk.out/
+
+# Starter harness config, rendered from project.toml by infra/harness_files.py
+harness/agentcore/agentcore.json
+harness/agentcore/aws-targets.json
+harness/app/*/harness.json
+harness/agentcore/.cli/
+harness/agentcore/.cache/

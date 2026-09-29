@@ -43,9 +43,9 @@ def test_every_name_derives_from_project_name(tmp_path):
     assert names["sessions_table"] == "acme-portal-sessions"
     assert names["web_bucket"] == "acme-portal-web-111122223333-eu-west-1"
     assert names["harness_stack"] == "AgentCore-acmeportal-default"
-    assert names["harness_output_prefix"] == "HarnessAssistant"
+    assert names["harness_logical_name"] == "Assistant"
     for prop, value in names.items():
-        if prop != "harness_output_prefix":
+        if prop != "harness_logical_name":
             assert "acme-portal" in value or "acmeportal" in value, prop
 
 
@@ -71,6 +71,7 @@ def test_environments_parsed(tmp_path):
         ('github_repo = "portal"', 'github_repo = "*"'),
         ('model_ids = ["model-a", "model-b"]', "model_ids = []"),
         ('model_id = "model-a"', 'model_id = "model-z"'),
+        ('endpoint = "PROD"', 'endpoint = "LIVE"'),
     ],
 )
 def test_invalid_values_rejected(tmp_path, old, new):

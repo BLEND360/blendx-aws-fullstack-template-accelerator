@@ -71,6 +71,13 @@ def test_deploy_role_grants(template):
         "s3:PutObject",
         "s3:DeleteObject",
         "cloudfront:CreateInvalidation",
+        # project.toml leaves harness.arn empty, so the deploy role manages the starter's endpoints
+        "bedrock-agentcore:CreateHarnessEndpoint",
+        "bedrock-agentcore:UpdateHarnessEndpoint",
+        "bedrock-agentcore:GetHarnessEndpoint",
+        "bedrock-agentcore:CreateAgentRuntimeEndpoint",
+        "bedrock-agentcore:UpdateAgentRuntimeEndpoint",
+        "bedrock-agentcore:GetAgentRuntimeEndpoint",
     }
     template.has_resource_properties(
         "AWS::IAM::Policy",
@@ -98,6 +105,34 @@ def test_execution_role_uses_managed_policy_only(template):
     (arn,) = role(template, C.execution_role)["ManagedPolicyArns"]
     assert "AmazonECSTaskExecutionRolePolicy" in str(arn)
     assert granted_actions(template, "EcsExecutionRole") == set()
+
+
+def test_harness_role_trusts_agentcore_in_this_account(template):
+    (statement,) = role(template, C.harness_execution_role)["AssumeRolePolicyDocument"]["Statement"]
+    assert statement["Principal"] == {"Service": "bedrock-agentcore.amazonaws.com"}
+    assert statement["Condition"] == {
+        "StringEquals": {"aws:SourceAccount": ACCOUNT},
+        "ArnLike": {"aws:SourceArn": f"arn:aws:bedrock-agentcore:{C.aws_region}:{ACCOUNT}:*"},
+    }
+
+
+def test_harness_role_grants_model_and_memory_only(template):
+    actions = granted_actions(template, "HarnessExecutionRole")
+    assert {"bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"} <= actions
+    assert "bedrock-agentcore:ListEvents" in actions
+    assert "bedrock-agentcore:InvokeGateway" not in actions
+    assert not any(a.startswith("s3:") for a in actions)
+
+
+def test_invoke_harness_statement_scoped_to_resolved_arn():
+    from definitions.roles import invoke_harness
+
+    statement = invoke_harness("arn:aws:bedrock-agentcore:r:1:harness/h").to_statement_json()
+    assert statement["Action"] == "bedrock-agentcore:InvokeHarness"
+    assert statement["Resource"] == [
+        "arn:aws:bedrock-agentcore:r:1:harness/h",
+        "arn:aws:bedrock-agentcore:r:1:harness/h/*",
+    ]
 
 
 def test_task_role_grants(template):

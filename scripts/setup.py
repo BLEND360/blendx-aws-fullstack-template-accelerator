@@ -3,6 +3,7 @@
     python scripts/setup.py
 
 Validates project.toml, writes backend/api/.env and frontend/web/.env from it,
+renders the starter harness's agentcore config (unless harness.arn is set),
 then deletes itself. Re-running is safe: if both .env files exist it reports
 that setup is already complete and changes nothing.
 """
@@ -15,6 +16,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "infra"))
 
 import config  # noqa: E402
+import harness_files  # noqa: E402
 
 BACKEND_ENV = ROOT / "backend" / "api" / ".env"
 FRONTEND_ENV = ROOT / "frontend" / "web" / ".env"
@@ -67,6 +69,9 @@ def main() -> int:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
         print(f"  wrote {path.relative_to(ROOT)}")
+    if c.deploys_starter_harness:
+        harness_files.write(c, ROOT / "harness")
+        print("  wrote harness/ agentcore config")
 
     print(f"""
 Project '{c.name}' configured for {c.aws_account} / {c.aws_region}.

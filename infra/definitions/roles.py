@@ -1,9 +1,8 @@
 """Every IAM role the template provisions. Add a role by adding a RoleSpec to the
 list role_specs() returns; RolesStack needs no change.
 
-Later tickets extend these roles in place: the tables grant the task role
-access (ST-05), the starter harness adds its execution role and the task
-role's invoke grant (ST-15).
+Later tickets extend these roles in place, e.g. the tables grant the task role
+access (ST-05).
 """
 
 from aws_cdk import aws_iam as iam
@@ -48,6 +47,48 @@ def ecs_tasks_principal(c: Config) -> iam.IPrincipal:
     return iam.ServicePrincipal(
         "ecs-tasks.amazonaws.com",
         conditions={"StringEquals": {"aws:SourceAccount": c.aws_account}},
+    )
+
+
+def manage_harness_endpoints(c: Config) -> list[iam.PolicyStatement]:
+    """For point-harness-alias.sh and wait-harness-ready.sh, which call the API directly."""
+    prefix = f"arn:aws:bedrock-agentcore:{c.aws_region}:{c.aws_account}"
+    return [
+        iam.PolicyStatement(
+            sid="ManageHarnessEndpoints",
+            actions=[
+                "bedrock-agentcore:CreateHarnessEndpoint",
+                "bedrock-agentcore:UpdateHarnessEndpoint",
+                "bedrock-agentcore:GetHarnessEndpoint",
+            ],
+            resources=[f"{prefix}:harness/*"],
+        ),
+        # A harness endpoint operation drives the matching operation on the
+        # runtime behind the harness; the platform found UpdateHarnessEndpoint
+        # denied until these were granted too.
+        iam.PolicyStatement(
+            sid="ManageAgentRuntimeEndpoints",
+            actions=[
+                "bedrock-agentcore:CreateAgentRuntimeEndpoint",
+                "bedrock-agentcore:UpdateAgentRuntimeEndpoint",
+                "bedrock-agentcore:GetAgentRuntimeEndpoint",
+            ],
+            resources=[f"{prefix}:runtime/*"],
+        ),
+    ]
+
+
+def invoke_harness(harness_arn: str) -> iam.PolicyStatement:
+    """The task role's grant on the resolved harness, starter or configured.
+
+    Attached by the app stack (ST-07), the first stack that knows the resolved
+    ARN: the starter harness's id is assigned when it deploys, after this
+    stack. Endpoints are addressed under the harness ARN.
+    """
+    return iam.PolicyStatement(
+        sid="InvokeHarness",
+        actions=["bedrock-agentcore:InvokeHarness"],
+        resources=[harness_arn, f"{harness_arn}/*"],
     )
 
 
@@ -105,6 +146,95 @@ def deploy_role(c: Config) -> RoleSpec:
                 # The distribution id is assigned at creation, after this role exists.
                 resources=[f"arn:aws:cloudfront::{account}:distribution/*"],
             ),
+            # Only when this project owns its harness: a deploy role that
+            # consumes a platform harness must not be able to repoint its endpoints.
+            *(manage_harness_endpoints(c) if c.deploys_starter_harness else []),
+        ],
+    )
+
+
+def harness_execution_role(c: Config) -> RoleSpec:
+    """Assumed by AgentCore to run the starter harness: a model and managed memory.
+
+    The platform's harness role minus what tools need (gateway invoke, S3
+    skills); ST-13 adds those back when it gives the harness tools.
+    """
+    account, region = c.aws_account, c.aws_region
+    return RoleSpec(
+        id="HarnessExecutionRole",
+        role_name=c.harness_execution_role,
+        description="Assumed by Bedrock AgentCore to run this project's starter harness.",
+        assumed_by=iam.ServicePrincipal(
+            "bedrock-agentcore.amazonaws.com",
+            conditions={
+                "StringEquals": {"aws:SourceAccount": account},
+                "ArnLike": {"aws:SourceArn": f"arn:aws:bedrock-agentcore:{region}:{account}:*"},
+            },
+        ),
+        statements=[
+            iam.PolicyStatement(
+                sid="InvokeModels",
+                actions=["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
+                resources=[
+                    "arn:aws:bedrock:*::foundation-model/*",
+                    f"arn:aws:bedrock:{region}:{account}:inference-profile/*",
+                ],
+            ),
+            # Third-party models (Anthropic included) are enabled through a
+            # Marketplace subscription the first time they are invoked.
+            iam.PolicyStatement(
+                sid="SubscribeToModels",
+                actions=["aws-marketplace:ViewSubscriptions", "aws-marketplace:Subscribe"],
+                resources=["*"],
+            ),
+            iam.PolicyStatement(
+                sid="ManagedMemory",
+                actions=[
+                    "bedrock-agentcore:CreateEvent",
+                    "bedrock-agentcore:GetEvent",
+                    "bedrock-agentcore:ListEvents",
+                    "bedrock-agentcore:ListSessions",
+                    "bedrock-agentcore:RetrieveMemoryRecords",
+                ],
+                resources=[f"arn:aws:bedrock-agentcore:{region}:{account}:memory/*"],
+            ),
+            # Runtime plumbing every AgentCore harness needs, per the platform role.
+            iam.PolicyStatement(
+                sid="RuntimePlumbing",
+                actions=[
+                    "ecr-public:GetAuthorizationToken",
+                    "sts:GetServiceBearerToken",
+                    "xray:GetSamplingRules",
+                    "xray:GetSamplingTargets",
+                    "xray:PutTelemetryRecords",
+                    "xray:PutTraceSegments",
+                ],
+                resources=["*"],
+            ),
+            iam.PolicyStatement(
+                sid="RuntimeLogs",
+                actions=[
+                    "logs:CreateLogGroup",
+                    "logs:DescribeLogStreams",
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents",
+                ],
+                resources=[
+                    f"arn:aws:logs:{region}:{account}:log-group:/aws/bedrock-agentcore/runtimes/*",
+                    f"arn:aws:logs:{region}:{account}:log-group:/aws/bedrock-agentcore/runtimes/*:log-stream:*",
+                ],
+            ),
+            iam.PolicyStatement(
+                sid="DescribeLogGroups",
+                actions=["logs:DescribeLogGroups"],
+                resources=[f"arn:aws:logs:{region}:{account}:log-group:*"],
+            ),
+            iam.PolicyStatement(
+                sid="RuntimeMetrics",
+                actions=["cloudwatch:PutMetricData"],
+                resources=["*"],
+                conditions={"StringEquals": {"cloudwatch:namespace": "bedrock-agentcore"}},
+            ),
         ],
     )
 
@@ -145,4 +275,7 @@ def task_role(c: Config) -> RoleSpec:
 
 
 def role_specs(c: Config) -> list[RoleSpec]:
-    return [deploy_role(c), execution_role(c), task_role(c)]
+    specs = [deploy_role(c), execution_role(c), task_role(c)]
+    if c.deploys_starter_harness:
+        specs.append(harness_execution_role(c))
+    return specs

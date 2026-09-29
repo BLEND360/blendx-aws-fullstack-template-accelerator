@@ -17,7 +17,7 @@ pytestmark = pytest.mark.skipif(not SETUP.exists(), reason="setup.py already ran
 
 @pytest.fixture
 def clone(tmp_path):
-    for rel in ("project.toml", "infra/config.py", "scripts/setup.py"):
+    for rel in ("project.toml", "infra/config.py", "infra/harness_files.py", "scripts/setup.py"):
         (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(ROOT / rel, tmp_path / rel)
     return tmp_path
@@ -35,6 +35,7 @@ def test_writes_env_files_and_removes_itself(clone):
     backend = (clone / "backend/api/.env").read_text()
     assert f"SESSIONS_TABLE_NAME={config.load().sessions_table}" in backend
     assert (clone / "frontend/web/.env").read_text().startswith("#")
+    assert (clone / "harness/app/assistant/harness.json").exists()
     assert not (clone / "scripts/setup.py").exists()
 
 

@@ -119,8 +119,9 @@ class Config:
         return f"AgentCore-{self.agentcore_project}-{AGENTCORE_TARGET}"
 
     @property
-    def harness_output_prefix(self) -> str:
-        return "Harness" + HARNESS_NAME.title().replace("_", "")
+    def harness_logical_name(self) -> str:
+        """toPascalId(name): outputs are Harness<this>{Id,Arn,Status,Version,AgentRuntimeArn}."""
+        return HARNESS_NAME.title().replace("_", "")
 
     @property
     def deploys_starter_harness(self) -> bool:
@@ -158,6 +159,12 @@ def load(path: Path = PROJECT_TOML) -> Config:
         errors.append("harness.model_ids: must list at least one model")
     if config.deploys_starter_harness and config.harness_model_id not in config.model_ids:
         errors.append("harness.model_id: must be one of harness.model_ids")
+    # The starter harness's endpoints are managed by the platform's
+    # point-harness-alias.sh, which only knows these two.
+    if config.deploys_starter_harness and config.harness_endpoint not in ("STAGING", "PROD"):
+        errors.append("harness.endpoint: must be STAGING or PROD for the starter harness")
+    if not config.harness_endpoint:
+        errors.append("harness.endpoint: required")
     if not config.environments:
         errors.append("environments: define at least one")
     if errors:
