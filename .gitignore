@@ -12,3 +12,12 @@ harness/agentcore/aws-targets.json
 harness/app/*/harness.json
 harness/agentcore/.cli/
 harness/agentcore/.cache/
+
+# Local Claude Code settings
+.claude/
+
+# cc-sdd files
+.kiro/
+CLAUDE.md
+AGENTS.md
+.agents/skills/kiro-*

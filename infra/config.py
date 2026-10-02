@@ -19,7 +19,7 @@ _REGION = re.compile(r"^[a-z]{2}(-[a-z]+)+-\d$")
 # No wildcards: these go into the OIDC trust policy.
 _GITHUB = re.compile(r"^[A-Za-z0-9._-]+$")
 
-# Platform convention (01-technical-proposal.md §2.4): the harness lives at
+# Platform convention (README, Architecture): the harness lives at
 # harness/app/assistant/ and its CloudFormation outputs are Harness<Pascal>*.
 HARNESS_NAME = "assistant"
 AGENTCORE_TARGET = "default"

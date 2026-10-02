@@ -7,7 +7,8 @@ dependencies = [
     "aws-cdk-lib>=2.160",
     "constructs>=10.3",
     # scripts/bootstrap.py only: OIDC provider lookup and caller-account check.
-    "boto3>=1.35",
+    # [crt]: needed by botocore's login/SSO credential provider.
+    "boto3[crt]>=1.40",
 ]
 
 [dependency-groups]

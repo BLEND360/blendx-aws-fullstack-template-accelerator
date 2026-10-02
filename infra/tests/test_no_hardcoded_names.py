@@ -6,7 +6,7 @@ from pathlib import Path
 import config
 
 ROOT = Path(__file__).resolve().parents[2]
-EXCLUDED = ("project.toml", "docs/")
+EXCLUDED = ("project.toml",)
 # ponytail: substring match; a name that is a common word ("api") would false-positive.
 # Meaningful for the template's placeholder name; tighten to word boundaries if it bites.
 
