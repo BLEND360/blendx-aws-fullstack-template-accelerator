@@ -6,7 +6,7 @@ services:
       - "8000:8000"
     env_file: backend/api/.env
     environment:
-      AWS_PROFILE: ${AWS_PROFILE:-}
+      - AWS_PROFILE  # passed through only when set on the host
     volumes:
       # Local AWS credentials, read-only, for /ready and harness calls.
       - ~/.aws:/home/app/.aws:ro
