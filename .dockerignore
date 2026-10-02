@@ -1,0 +1,7 @@
+# Allowlist: the context is the repo root, so send only what the image copies.
+*
+!backend/api/app
+!backend/api/pyproject.toml
+!backend/api/uv.lock
+**/__pycache__
+**/*.pyc

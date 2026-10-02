@@ -1,0 +1,57 @@
+[project]
+name = "api"
+version = "0.1.0"
+description = "FastAPI service"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic-settings>=2.6",
+    # [crt]: botocore's login/SSO credential provider needs it; without it a
+    # local profile that authenticates that way raises MissingDependencyException.
+    "boto3[crt]>=1.40",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "httpx>=0.27",
+    "import-linter>=2.1",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
+# The layering in the root README (Architecture), enforced: `uv run lint-imports`.
+[tool.importlinter]
+root_package = "app"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Backend layering"
+type = "layers"
+layers = [
+    "app.routers",
+    "app.services",
+    "app.repositories | app.clients | app.harness",
+    "app.core",
+]
+
+# Direct imports only: core/errors.py imports botocore to classify its errors,
+# and everything may import core.
+[[tool.importlinter.contracts]]
+name = "Routers and services never call AWS directly"
+type = "forbidden"
+source_modules = ["app.routers", "app.services"]
+forbidden_modules = ["boto3", "botocore"]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "Services know nothing about HTTP"
+type = "forbidden"
+source_modules = ["app.services"]
+forbidden_modules = ["fastapi", "starlette"]
+allow_indirect_imports = true
