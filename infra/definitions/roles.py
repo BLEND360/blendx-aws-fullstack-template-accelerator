@@ -92,6 +92,29 @@ def invoke_harness(harness_arn: str) -> iam.PolicyStatement:
     )
 
 
+def get_harness(harness_arn: str) -> iam.PolicyStatement:
+    """The task role reads the resolved harness to find its memory. Attached by ST-07, like invoke_harness."""
+    return iam.PolicyStatement(
+        sid="GetHarness",
+        actions=["bedrock-agentcore:GetHarness"],
+        resources=[harness_arn],
+    )
+
+
+def harness_memory(c: Config) -> iam.PolicyStatement:
+    """History and session deletion read and delete events in the harness's memory.
+
+    The memory's id is assigned when the harness deploys, so until ST-07 can pass
+    its ARN this is every memory of the account and region: wider than it should
+    be, and narrowed by whoever attaches it.
+    """
+    return iam.PolicyStatement(
+        sid="HarnessMemoryEvents",
+        actions=["bedrock-agentcore:ListEvents", "bedrock-agentcore:DeleteEvent"],
+        resources=[f"arn:aws:bedrock-agentcore:{c.aws_region}:{c.aws_account}:memory/*"],
+    )
+
+
 def deploy_role(c: Config) -> RoleSpec:
     account, region = c.aws_account, c.aws_region
     return RoleSpec(

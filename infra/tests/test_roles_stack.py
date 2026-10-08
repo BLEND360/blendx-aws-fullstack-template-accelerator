@@ -135,6 +135,22 @@ def test_invoke_harness_statement_scoped_to_resolved_arn():
     ]
 
 
+def test_get_harness_statement_is_scoped_to_the_harness():
+    from definitions.roles import get_harness
+
+    statement = get_harness("arn:aws:bedrock-agentcore:r:1:harness/h").to_statement_json()
+    assert statement["Action"] == "bedrock-agentcore:GetHarness"
+    assert statement["Resource"] == "arn:aws:bedrock-agentcore:r:1:harness/h"
+
+
+def test_history_statement_reads_and_deletes_events_in_this_accounts_memories_only():
+    from definitions.roles import harness_memory
+
+    statement = harness_memory(C).to_statement_json()
+    assert set(statement["Action"]) == {"bedrock-agentcore:ListEvents", "bedrock-agentcore:DeleteEvent"}
+    assert statement["Resource"] == f"arn:aws:bedrock-agentcore:{C.aws_region}:{ACCOUNT}:memory/*"
+
+
 def test_task_role_grants(template):
     assert granted_actions(template, "EcsTaskRole") == {
         "ssmmessages:CreateControlChannel",

@@ -36,7 +36,7 @@ type = "layers"
 layers = [
     "app.routers",
     "app.services",
-    "app.repositories | app.clients | app.harness",
+    "app.repositories | app.clients | app.harness | app.tools",
     "app.core",
 ]
 
@@ -55,3 +55,12 @@ type = "forbidden"
 source_modules = ["app.services"]
 forbidden_modules = ["fastapi", "starlette"]
 allow_indirect_imports = true
+
+# The layering above lets a service import any lower layer; this is the rule the
+# steering states and the layers contract alone does not enforce: services reach
+# adapters only through the ports in services/ports.py.
+[[tool.importlinter.contracts]]
+name = "Services use ports, never adapters"
+type = "forbidden"
+source_modules = ["app.services"]
+forbidden_modules = ["app.harness", "app.tools", "app.repositories", "app.clients"]

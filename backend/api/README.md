@@ -17,3 +17,5 @@ reach the outside only through the `Protocol` ports in `services/ports.py`;
 `clients/`, `repositories/` and `harness/` are the adapters that talk to AWS and
 translate its errors with `core.errors.classify_aws_error`. See
 the root [README](../../README.md#architecture).
+
+How the API talks to the agent (sessions, streamed turns, tools, extending it): [INTEGRATION.md](INTEGRATION.md).

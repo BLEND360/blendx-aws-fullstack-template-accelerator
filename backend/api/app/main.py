@@ -1,3 +1,6 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -6,11 +9,23 @@ from app.core.context import REQUEST_ID_HEADER
 from app.core.exception_handlers import register_exception_handlers
 from app.core.logging import get_logger
 from app.core.middleware import CorrelationIdMiddleware
-from app.routers import health
+from app.routers import health, sessions, turns
 
 logger = get_logger(__name__)
 
-app = FastAPI(title=settings.project_name)
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    # Until ST-05 provides the DynamoDB store, sessions live in this process: right for one
+    # task, wrong for two (each would see only its own). ST-05 replaces the wiring and this line.
+    logger.warning(
+        "session_store_in_memory", detail="Session metadata is held in this process; not valid with more than one task."
+    )
+    yield
+
+
+app = FastAPI(title=settings.project_name, lifespan=lifespan)
 
 # Order matters. Starlette applies middleware in reverse registration order,
 # so CORS, registered last, is outermost and attaches its headers to error
@@ -30,6 +45,8 @@ app.add_middleware(
 register_exception_handlers(app)
 
 app.include_router(health.router)
+app.include_router(sessions.router)
+app.include_router(turns.router)
 
 logger.info("application_started", project=settings.project_name, aws_region=settings.aws_region)
 if settings.auth_bypass_enabled:

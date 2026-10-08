@@ -26,6 +26,13 @@ class Settings(BaseSettings):
     harness_arn: str = ""
     harness_endpoint: str
     allowed_model_ids: list[str]  # JSON list, e.g. ["model-a"]
+
+    # Turn streaming. The idle limit is the longest the harness may stay silent
+    # (botocore's read timeout): a slow turn keeps producing events, a hung one
+    # does not. The turn limit bounds the agent loop's total duration.
+    harness_idle_timeout_seconds: int = 300
+    harness_turn_timeout_seconds: int = 900
+    max_tool_rounds: int = 8  # local-tool round trips per turn before giving up
     cors_origins: str  # comma-separated exact origins
 
     # Local-only: serve authenticated endpoints as a stand-in user. Ignored in
