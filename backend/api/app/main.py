@@ -1,0 +1,26 @@
+from fastapi import FastAPI
+
+from app.core.config import settings
+from app.core.exception_handlers import register_exception_handlers
+from app.core.logging import get_logger
+from app.core.middleware import CorrelationIdMiddleware
+from app.routers import auth, configuration, health
+
+logger = get_logger(__name__)
+
+app = FastAPI(title=settings.project_name)
+
+# No CORS: the SPA and the API share an origin (the dev proxy locally,
+# CloudFront in production), so the browser never makes a cross-origin call.
+app.add_middleware(CorrelationIdMiddleware)
+register_exception_handlers(app)
+
+app.include_router(health.router)
+app.include_router(configuration.router)
+app.include_router(auth.router)
+
+logger.info("application_started", project=settings.project_name, aws_region=settings.aws_region)
+if settings.auth_bypass_enabled:
+    logger.warning("local_auth_bypass_enabled", detail="Authenticated routes serve a stand-in user. Local only.")
+elif settings.local_auth_bypass:
+    logger.warning("local_auth_bypass_ignored", detail="LOCAL_AUTH_BYPASS is set but this is a deployed task.")
