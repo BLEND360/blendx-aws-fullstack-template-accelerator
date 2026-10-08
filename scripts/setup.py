@@ -33,7 +33,6 @@ ITEMS_TABLE_NAME={c.items_table}
 HARNESS_ARN={c.harness_arn}
 HARNESS_ENDPOINT={c.harness_endpoint}
 ALLOWED_MODEL_IDS={json.dumps(list(c.model_ids))}
-CORS_ORIGINS=http://localhost:5173
 
 # Cognito does not exist until the auth stack is deployed, so local runs skip
 # authentication. Ignored when running as a deployed ECS task.

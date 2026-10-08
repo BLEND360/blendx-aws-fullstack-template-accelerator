@@ -46,13 +46,14 @@ python scripts/bootstrap.py   # once per AWS account
 git push                      # full deploy, agent included
 ```
 
-Run the API locally:
+Run the API and the web app locally:
 
 ```bash
-docker compose up --build     # http://localhost:8000/health
+docker compose up --build     # web http://localhost:5173, API http://localhost:8000/health
 ```
 
-Or without Docker, see [backend/api/README.md](backend/api/README.md).
+Or without Docker, see [backend/api/README.md](backend/api/README.md) and
+[frontend/web/README.md](frontend/web/README.md).
 
 ## Architecture
 

@@ -21,3 +21,4 @@ harness/agentcore/.cache/
 CLAUDE.md
 AGENTS.md
 .agents/skills/kiro-*
+*.tsbuildinfo
