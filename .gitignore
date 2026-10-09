@@ -22,3 +22,6 @@ CLAUDE.md
 AGENTS.md
 .agents/skills/kiro-*
 *.tsbuildinfo
+
+# Local compose overrides (credentials mounts, ports)
+docker-compose.override.yml

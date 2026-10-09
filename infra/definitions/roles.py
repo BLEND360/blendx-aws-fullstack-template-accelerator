@@ -276,6 +276,27 @@ def execution_role(c: Config) -> RoleSpec:
     )
 
 
+def table_access(c: Config) -> iam.PolicyStatement:
+    """The running API's access to the template's two tables, and to nothing else in DynamoDB.
+
+    Scoped by name: the names come from project.toml, so the roles stack needs no reference to the
+    data stack and stays deployable before it.
+    """
+    prefix = f"arn:aws:dynamodb:{c.aws_region}:{c.aws_account}:table"
+    return iam.PolicyStatement(
+        sid="DataTables",
+        actions=[
+            "dynamodb:GetItem",
+            "dynamodb:PutItem",
+            "dynamodb:UpdateItem",
+            "dynamodb:DeleteItem",
+            "dynamodb:Query",
+            "dynamodb:DescribeTable",  # the readiness probe
+        ],
+        resources=[f"{prefix}/{c.sessions_table}", f"{prefix}/{c.items_table}"],
+    )
+
+
 def task_role(c: Config) -> RoleSpec:
     return RoleSpec(
         id="EcsTaskRole",
@@ -293,6 +314,7 @@ def task_role(c: Config) -> RoleSpec:
                 ],
                 resources=["*"],  # ssmmessages has no resource-level scoping
             ),
+            table_access(c),
         ],
     )
 

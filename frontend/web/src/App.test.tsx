@@ -42,13 +42,13 @@ test("the chat is reachable by URL and from the menu, and starts a conversation"
     "/api/v1/sessions/s1/messages": () => json(200, { messages: [] }),
   });
   renderApp("/chat");
-  expect(await screen.findByText("Say hello to start the conversation.")).toBeInTheDocument();
+  expect(await screen.findByText("Ask about projects, items, insights or workspace information.")).toBeInTheDocument();
   expect(screen.getByRole("textbox", { name: "Message" })).toBeInTheDocument();
 
   await userEvent.click(within(screen.getByRole("menu")).getByRole("link", { name: "Home" }));
   expect(await screen.findByRole("heading", { name: "Welcome" })).toBeInTheDocument();
   await userEvent.click(within(screen.getByRole("menu")).getByRole("link", { name: "Chat" }));
-  expect(await screen.findByText("Say hello to start the conversation.")).toBeInTheDocument();
+  expect(await screen.findByText("Ask about projects, items, insights or workspace information.")).toBeInTheDocument();
 }, 15_000);
 
 test("the chat is as protected as every other page: without the backend bypass it is not shown", async () => {
@@ -71,7 +71,7 @@ test("a deployment that answers with recordings says so on the chat page", async
 test("local mode is announced on screen and offers no sign-out", async () => {
   api();
   renderApp("/");
-  expect(await screen.findByText("Running without authentication (local mode).")).toBeInTheDocument();
+  expect(await screen.findByText("Local development · Authentication disabled")).toBeInTheDocument();
   expect(screen.getByText("Local Dev")).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Sign out" })).not.toBeInTheDocument();
 });

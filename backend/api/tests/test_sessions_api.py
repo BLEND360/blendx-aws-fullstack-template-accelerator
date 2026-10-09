@@ -198,8 +198,8 @@ def test_every_route_requires_a_signed_in_user(client):
         assert response.status_code == 401, (method, path)
 
 
-def test_starting_the_app_warns_that_sessions_live_in_memory(caplog):
+def test_starting_the_app_warns_that_data_lives_in_memory(caplog):
     with caplog.at_level(logging.WARNING):
         with TestClient(app):
             pass
-    assert any(r.getMessage() == "session_store_in_memory" for r in caplog.records)
+    assert any(r.getMessage() == "data_store_in_memory" for r in caplog.records)

@@ -1,4 +1,13 @@
-import { Alert, Button, Empty, Flex, Typography, theme } from "antd";
+import {
+  ClockCircleOutlined,
+  FileSearchOutlined,
+  PlusOutlined,
+  QuestionCircleOutlined,
+  RobotOutlined,
+  WarningOutlined,
+} from "@ant-design/icons";
+import { Alert, Button, Typography } from "antd";
+import "../../ui/design.css";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { ApiErrorAlert } from "../../ui/ApiErrorAlert";
@@ -7,31 +16,51 @@ import { messages, turnErrorMessage } from "../../messages";
 import type { ChatItem, TurnFailure } from "./chatState";
 import { Composer } from "./Composer";
 import { ToolCard } from "./ToolCard";
+import "./chat.css";
 import { useChat } from "./useChat";
 import { useConversation } from "./useConversation";
 
 // Visible to assistive technology only: announcements that must not move the focus or clutter the screen.
 const VISUALLY_HIDDEN = { position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap" } as const;
 
-function Bubble({ item }: { item: Extract<ChatItem, { kind: "user" | "assistant" }> }) {
-  const { token } = theme.useToken();
+function Bubble({ item, streaming }: { item: Extract<ChatItem, { kind: "user" | "assistant" }>; streaming: boolean }) {
   const mine = item.kind === "user";
   return (
-    <Flex justify={mine ? "flex-end" : "flex-start"}>
-      <div
-        style={{
-          maxWidth: "85%",
-          padding: `${token.paddingXS}px ${token.paddingSM}px`,
-          borderRadius: token.borderRadiusLG,
-          background: mine ? token.colorPrimaryBg : token.colorFillQuaternary,
-        }}
-      >
-        <Typography.Text strong type="secondary">
-          {mine ? messages.chatYou : messages.chatAssistant}
-        </Typography.Text>
-        <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{item.text}</div>
+    <div className={`chat-row ${mine ? "chat-row--user" : "chat-row--assistant"}`}>
+      {!mine && (
+        <span className="chat-avatar" aria-hidden>
+          <RobotOutlined />
+        </span>
+      )}
+      <div className={`chat-bubble${streaming ? " chat-bubble--streaming" : ""}`}>
+        <span className="chat-author">{mine ? messages.chatYou : messages.chatAssistant}</span>
+        <div className="chat-text">{item.text}</div>
       </div>
-    </Flex>
+    </div>
+  );
+}
+
+const SUGGESTION_ICONS = [<FileSearchOutlined />, <WarningOutlined />, <ClockCircleOutlined />, <QuestionCircleOutlined />];
+
+function Welcome({ disabled, onPick }: { disabled: boolean; onPick: (text: string) => void }) {
+  return (
+    <div className="chat-welcome">
+      <span className="chat-halo" aria-hidden>
+        <RobotOutlined />
+      </span>
+      <h3>{messages.chatEmptyTitle}</h3>
+      <p>{messages.chatEmpty}</p>
+      <div className="chat-suggestions">
+        {messages.chatSuggestions.map((text, index) => (
+          <button key={text} type="button" className="chat-suggestion" disabled={disabled} onClick={() => onPick(text)}>
+            <span className="chat-suggestion-icon" aria-hidden>
+              {SUGGESTION_ICONS[index]}
+            </span>
+            {text}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -57,7 +86,6 @@ function Failure({ failure, retry, startNew }: { failure: TurnFailure; retry: ()
 }
 
 function Conversation(props: { sessionId: string; history: ChatItem[]; forget: () => void; startNew: () => void }) {
-  const { token } = theme.useToken();
   const { state, send, retry } = useChat(props.sessionId, props.history, props.forget);
   const streaming = state.turn.phase === "streaming";
   const bottom = useRef<HTMLDivElement>(null);
@@ -76,22 +104,44 @@ function Conversation(props: { sessionId: string; history: ChatItem[]; forget: (
     wasStreaming.current = streaming;
   }, [streaming, state.turn.phase]);
 
+  const last = state.items.length - 1;
   return (
     <>
       <div role="status" aria-live="polite" style={VISUALLY_HIDDEN}>
         {announcement}
       </div>
-      <Flex vertical gap="small" role="log" aria-live="off" aria-busy={streaming} aria-label={messages.chatTitle}>
-        {state.items.length === 0 && !streaming && <Empty description={messages.chatEmpty} />}
-        {state.items.map((item) =>
-          item.kind === "tool" ? <ToolCard key={item.callId} item={item} /> : <Bubble key={item.id} item={item} />,
-        )}
-        {streaming && <Typography.Text type="secondary">{messages.chatResponding}…</Typography.Text>}
-        {state.turn.phase === "failed" && <Failure failure={state.turn.failure} retry={retry} startNew={props.startNew} />}
-        <div ref={bottom} />
-      </Flex>
-      <div style={{ position: "sticky", bottom: 0, paddingBlock: token.paddingSM, background: token.colorBgBase }}>
+      <div className="chat-scroll">
+        <div className="chat-log" role="log" aria-live="off" aria-busy={streaming} aria-label={messages.chatTitle}>
+          {state.items.length === 0 && !streaming && <Welcome disabled={streaming} onPick={send} />}
+          {state.items.map((item, index) =>
+            item.kind === "tool" ? (
+              <ToolCard key={item.callId} item={item} />
+            ) : (
+              <Bubble key={item.id} item={item} streaming={streaming && index === last && item.kind === "assistant"} />
+            ),
+          )}
+          {streaming && (
+            <div className="chat-row chat-row--assistant">
+              <span className="chat-avatar" aria-hidden>
+                <RobotOutlined />
+              </span>
+              <span className="chat-typing">
+                {messages.chatThinking}
+                <span aria-hidden>
+                  <i />
+                  <i />
+                  <i />
+                </span>
+              </span>
+            </div>
+          )}
+          {state.turn.phase === "failed" && <Failure failure={state.turn.failure} retry={retry} startNew={props.startNew} />}
+          <div ref={bottom} className="chat-bottom" />
+        </div>
+      </div>
+      <div className="chat-dock">
         <Composer disabled={streaming} onSend={send} />
+        <p className="chat-disclaimer">{messages.chatDisclaimer}</p>
       </div>
     </>
   );
@@ -105,21 +155,37 @@ export interface ChatPageProps {
 export function ChatPage({ replayMode }: ChatPageProps) {
   const { state, forget, startNew, reload } = useConversation();
   return (
-    <Flex vertical gap="middle" style={{ maxWidth: 800, marginInline: "auto" }}>
-      <Flex align="center" justify="space-between" gap="small">
-        <Typography.Title level={2} style={{ margin: 0 }}>
-          {messages.chatTitle}
-        </Typography.Title>
-        <Button onClick={startNew}>{messages.chatNewConversation}</Button>
-      </Flex>
+    <div className="page chat-page">
+      <header className="page-head">
+        <div>
+          <div className="page-kicker">{messages.chatKicker}</div>
+          <Typography.Title level={2} className="page-title">
+            {messages.chatHeading}
+          </Typography.Title>
+          <p className="page-sub">{messages.chatSubtitle}</p>
+        </div>
+        <div className="chat-actions">
+          <span className={`status-pill${replayMode ? " status-pill--demo" : ""}`}>{replayMode ? messages.chatDemo : messages.chatLive}</span>
+          <Button icon={<PlusOutlined aria-hidden />} onClick={startNew}>
+            {messages.chatNewConversation}
+          </Button>
+        </div>
+      </header>
       {replayMode && <Alert type="info" showIcon title={messages.chatReplayNotice} />}
-      {state.status === "loading" && <LoadingIndicator />}
       {state.status === "error" && <ApiErrorAlert error={state.error} onRetry={reload} forceRetry />}
-      {state.status === "ready" ? (
-        <Conversation key={state.sessionId} sessionId={state.sessionId} history={state.history} forget={forget} startNew={startNew} />
-      ) : (
-        <Composer disabled onSend={() => {}} /> // loading or failed: nothing can be sent yet
-      )}
-    </Flex>
+      <div className="chat-canvas">
+        {state.status === "ready" ? (
+          <Conversation key={state.sessionId} sessionId={state.sessionId} history={state.history} forget={forget} startNew={startNew} />
+        ) : (
+          <>
+            <div className="chat-scroll">{state.status === "loading" && <LoadingIndicator />}</div>
+            <div className="chat-dock">
+              <Composer disabled onSend={() => {}} /> {/* loading or failed: nothing can be sent yet */}
+              <p className="chat-disclaimer">{messages.chatDisclaimer}</p>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
   );
 }

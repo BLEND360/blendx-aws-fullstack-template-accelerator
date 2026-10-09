@@ -11,6 +11,7 @@ from typing import Protocol
 from app.core.models import (
     HarnessEvent,
     HarnessRequest,
+    ItemRecord,
     MemoryEvent,
     MemoryRef,
     SessionRecord,
@@ -52,8 +53,8 @@ class MemoryPort(Protocol):
 class SessionStore(Protocol):
     """Session metadata, owned by the caller: (owner_id, session_id) is the key.
 
-    ST-05 provides the DynamoDB implementation. Errors surface as AppError
-    (`data_unavailable`, `data_throttled`, `data_conflict`).
+    Implemented by repositories/dynamo.py (deployed) and in_memory_sessions.py (local). Errors
+    surface as AppError (`data_unavailable`, `data_throttled`, `data_conflict`).
     """
 
     def create(self, record: SessionRecord) -> None: ...
@@ -69,6 +70,25 @@ class SessionStore(Protocol):
         ...
 
     def delete(self, owner_id: str, session_id: str) -> None: ...
+
+
+class ItemStore(Protocol):
+    """The example entity, owned by the caller like a session: (owner_id, item_id) is the key,
+    so another user's item is simply absent."""
+
+    def create(self, record: ItemRecord) -> None: ...
+
+    def get(self, owner_id: str, item_id: str) -> ItemRecord | None: ...
+
+    def list(self, owner_id: str) -> list[ItemRecord]:
+        """Newest first."""
+        ...
+
+    def update(self, record: ItemRecord, expected_revision: int) -> ItemRecord:
+        """Atomic: ConflictError when the stored revision differs, NotFoundError when absent. Returns revision + 1."""
+        ...
+
+    def delete(self, owner_id: str, item_id: str) -> None: ...
 
 
 class ToolPort(Protocol):

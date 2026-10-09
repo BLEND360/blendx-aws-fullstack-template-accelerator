@@ -6,11 +6,15 @@ import type { StoredItem } from "../../dev/items-standin";
 export function itemsFetch(other: (url: string) => Response, store: StoredItem[] = []) {
   return vi.fn<typeof fetch>((input, init) => {
     const url = String(input);
-    if (url !== "/api/v1/items") return Promise.resolve(other(url));
+    const route = /^\/api\/v1\/items(?:\/([^/]+))?$/.exec(url);
+    if (!route) return Promise.resolve(other(url));
     const body = init?.body ? (JSON.parse(String(init.body)) as unknown) : undefined;
-    const { status, body: payload } = handleItems({ method: init?.method ?? "GET", body }, store);
+    const { status, body: payload } = handleItems({ method: init?.method ?? "GET", body, id: route[1] }, store);
+    // A 204 has no body, and the Response constructor refuses one.
     return Promise.resolve(
-      new Response(JSON.stringify(payload), { status, headers: { "Content-Type": "application/json" } }),
+      status === 204
+        ? new Response(null, { status })
+        : new Response(JSON.stringify(payload), { status, headers: { "Content-Type": "application/json" } }),
     );
   });
 }

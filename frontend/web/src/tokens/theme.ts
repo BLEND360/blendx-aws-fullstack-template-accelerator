@@ -52,6 +52,8 @@ export const lightTheme: ThemeConfig = {
     // `colorTextSecondary` — keep both aligned so secondary copy renders gray.
     colorTextDescription: "#737373",
     colorBgBase: "#ffffff",
+    colorBgLayout: "#f4f6fa",
+    colorBorderSecondary: "#e3e8ef",
     fontFamily: fontFamily.sans,
     fontSize: 16,
     borderRadius: 8,
@@ -111,12 +113,14 @@ export const lightTheme: ThemeConfig = {
       itemHoverColor: "#053057",
     },
     Menu: {
-      // Active (selected) menu item — navy bg + white text. White on
-      // `#053057` clears WCAG AA easily (~15:1). AntD's default pairs a pale
-      // tint bg with brand-colored text and lands well under AA on the small
-      // text size used in menu items.
-      itemSelectedBg: "#053057",
-      itemSelectedColor: "#ffffff",
+      // Active item — a soft navy tint with navy text (~12:1 on the tint), so the
+      // navigation reads as quiet chrome rather than a row of filled buttons.
+      itemSelectedBg: "#e8eef6",
+      itemSelectedColor: "#053057",
+      horizontalItemSelectedColor: "#053057",
+      itemColor: "#4a5668",
+      itemHoverBg: "#f0f4f9",
+      itemHoverColor: "#053057",
     },
     Table: {
       // Header row uses full brand navy (`--color-brand-500`) with white text

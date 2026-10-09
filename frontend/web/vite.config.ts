@@ -1,6 +1,5 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
-import { itemsStandIn } from "./dev/items-standin";
 
 // The local API. Production reaches the same paths through CloudFront, so the
 // SPA only ever uses origin-relative /api and /auth; this is the one place a
@@ -8,8 +7,7 @@ import { itemsStandIn } from "./dev/items-standin";
 const LOCAL_API = "http://localhost:8000";
 
 export default defineConfig({
-  // Remove itemsStandIn() (and dev/items-standin.ts) once the items API exists.
-  plugins: [react(), itemsStandIn()],
+  plugins: [react()],
   server: {
     proxy: {
       "^/(api|auth)(/|$)": {

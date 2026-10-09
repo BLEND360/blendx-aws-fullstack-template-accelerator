@@ -44,6 +44,18 @@ class SessionRecord:
     revision: int  # optimistic concurrency; starts at 1
 
 
+# --- Items: the template's example domain entity -----------------------------
+@dataclass(frozen=True)
+class ItemRecord:
+    item_id: str  # opaque, generated on the server
+    owner_id: str  # from the authenticated identity, never from a request
+    name: str
+    description: str | None
+    created_at: str  # ISO 8601 UTC
+    updated_at: str
+    revision: int  # optimistic concurrency; starts at 1
+
+
 # --- What a harness adapter consumes and produces ---------------------------
 @dataclass(frozen=True)
 class ToolSpec:

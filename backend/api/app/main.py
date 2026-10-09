@@ -7,7 +7,7 @@ from app.core.config import settings
 from app.core.exception_handlers import register_exception_handlers
 from app.core.logging import get_logger
 from app.core.middleware import CorrelationIdMiddleware
-from app.routers import auth, configuration, health, sessions, turns
+from app.routers import auth, configuration, health, items, sessions, turns
 
 logger = get_logger(__name__)
 
@@ -15,11 +15,11 @@ logger = get_logger(__name__)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    # Until ST-05 provides the DynamoDB store, sessions live in this process: right for one
-    # task, wrong for two (each would see only its own). ST-05 replaces the wiring and this line.
-    logger.warning(
-        "session_store_in_memory", detail="Session metadata is held in this process; not valid with more than one task."
-    )
+    if not settings.use_dynamodb:
+        # Right for one process, wrong for two tasks (each would see only its own) and lost on restart.
+        logger.warning(
+            "data_store_in_memory", detail="Sessions and items are held in this process; local use only."
+        )
     if settings.replay_enabled:
         logger.warning("harness_replay_enabled", detail="Turns are answered with recorded streams, not a live harness.")
     elif settings.harness_replay:
@@ -37,6 +37,7 @@ register_exception_handlers(app)
 app.include_router(health.router)
 app.include_router(configuration.router)
 app.include_router(auth.router)
+app.include_router(items.router)
 app.include_router(sessions.router)
 app.include_router(turns.router)
 

@@ -55,14 +55,14 @@ describe("opening the conversation", () => {
     await userEvent.type(field(), "typing is fine");
     expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
     release(json(201, { id: "s1" }));
-    await screen.findByText("Say hello to start the conversation.");
+    await screen.findByText("Ask about projects, items, insights or workspace information.");
     expect(screen.queryByRole("status", { name: "Loading" })).not.toBeInTheDocument();
   });
 
   test("a new conversation is empty and invites the first message", async () => {
     api(CREATE);
     show();
-    expect(await screen.findByText("Say hello to start the conversation.")).toBeInTheDocument();
+    expect(await screen.findByText("Ask about projects, items, insights or workspace information.")).toBeInTheDocument();
     expect(localStorage.getItem("chat.sessionId")).toBe("s1");
   });
 
@@ -85,14 +85,14 @@ describe("opening the conversation", () => {
     expect(text.indexOf("Four.")).toBeLessThan(text.indexOf("Thanks"));
     expect(within(log()).getAllByText("You")).toHaveLength(2);
     expect(within(log()).getAllByText("Assistant")).toHaveLength(1);
-    expect(screen.queryByText("Say hello to start the conversation.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Ask about projects, items, insights or workspace information.")).not.toBeInTheDocument();
   });
 
   test("a remembered conversation that no longer exists is replaced quietly", async () => {
     localStorage.setItem("chat.sessionId", "stale");
     api({ "GET /api/v1/sessions/stale/messages": () => apiError(404, "not_found", "Session not found."), ...CREATE });
     show();
-    expect(await screen.findByText("Say hello to start the conversation.")).toBeInTheDocument();
+    expect(await screen.findByText("Ask about projects, items, insights or workspace information.")).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(localStorage.getItem("chat.sessionId")).toBe("s1");
   });
@@ -104,7 +104,7 @@ describe("opening the conversation", () => {
     expect(await screen.findByText("The data store is down.")).toBeInTheDocument();
     expect(screen.getByText("Request ID: rid-open")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Retry" }));
-    expect(await screen.findByText("Say hello to start the conversation.")).toBeInTheDocument();
+    expect(await screen.findByText("Ask about projects, items, insights or workspace information.")).toBeInTheDocument();
   });
 
   test("new conversation leaves the old one behind and remembers the new", async () => {
@@ -118,7 +118,7 @@ describe("opening the conversation", () => {
     show();
     await screen.findByText("old talk");
     await userEvent.click(screen.getByRole("button", { name: "New conversation" }));
-    expect(await screen.findByText("Say hello to start the conversation.")).toBeInTheDocument();
+    expect(await screen.findByText("Ask about projects, items, insights or workspace information.")).toBeInTheDocument();
     expect(screen.queryByText("old talk")).not.toBeInTheDocument();
     expect(localStorage.getItem("chat.sessionId")).toBe("n1");
   });
@@ -127,10 +127,10 @@ describe("opening the conversation", () => {
     api(CREATE);
     const first = show(true);
     expect(screen.getByText("Demo mode: these responses are recorded, not live.")).toBeInTheDocument();
-    await screen.findByText("Say hello to start the conversation.");
+    await screen.findByText("Ask about projects, items, insights or workspace information.");
     first.unmount();
     show(false);
-    await screen.findByText("Say hello to start the conversation.");
+    await screen.findByText("Ask about projects, items, insights or workspace information.");
     expect(screen.queryByText(/Demo mode/)).not.toBeInTheDocument();
   });
 });
@@ -141,12 +141,12 @@ describe("a turn", () => {
     const live = controlledResponse();
     api({ ...CREATE, [TURN]: () => live.response });
     show();
-    await screen.findByText("Say hello to start the conversation.");
+    await screen.findByText("Ask about projects, items, insights or workspace information.");
     await send("hello agent");
 
     expect(within(log()).getByText("hello agent")).toBeInTheDocument(); // before any event arrived
     expect(field()).toHaveValue("");
-    expect(screen.getByText("The assistant is responding…")).toBeInTheDocument();
+    expect(screen.getByText("Thinking…")).toBeInTheDocument();
     expect(log()).toHaveAttribute("aria-busy", "true");
     await userEvent.type(field(), "another{Enter}");
     expect(posts()).toHaveLength(1); // the second message was not sent
@@ -161,7 +161,7 @@ describe("a turn", () => {
     const live = controlledResponse();
     api({ ...CREATE, [TURN]: () => live.response });
     show();
-    await screen.findByText("Say hello to start the conversation.");
+    await screen.findByText("Ask about projects, items, insights or workspace information.");
     await send("hi");
 
     live.push(sseBlock("delta", { text: "Hel" }));
@@ -179,7 +179,7 @@ describe("a turn", () => {
     const live = controlledResponse();
     api({ ...CREATE, [TURN]: () => live.response });
     show();
-    await screen.findByText("Say hello to start the conversation.");
+    await screen.findByText("Ask about projects, items, insights or workspace information.");
     await send("what time is it");
 
     live.push(sseBlock("delta", { text: "Let me check. " }));
@@ -214,7 +214,7 @@ describe("a turn", () => {
         ]),
     });
     show();
-    await screen.findByText("Say hello to start the conversation.");
+    await screen.findByText("Ask about projects, items, insights or workspace information.");
     await send("go");
     const first = await screen.findByRole("group", { name: "First tool: Done" });
     const second = await screen.findByRole("group", { name: "Second tool: Failed" });
@@ -229,7 +229,7 @@ describe("a turn", () => {
     Element.prototype.scrollIntoView = scroll;
     api({ ...CREATE, [TURN]: () => streamResponse([sseBlock("delta", { text: "a" }), sseBlock("done", {})]) });
     show();
-    await screen.findByText("Say hello to start the conversation.");
+    await screen.findByText("Ask about projects, items, insights or workspace information.");
     const before = scroll.mock.calls.length;
     await send("hi");
     await within(log()).findByText("a");
@@ -240,7 +240,7 @@ describe("a turn", () => {
     const live = controlledResponse();
     api({ ...CREATE, [TURN]: () => live.response });
     show();
-    await screen.findByText("Say hello to start the conversation.");
+    await screen.findByText("Ask about projects, items, insights or workspace information.");
     const status = () => screen.getAllByRole("status").find((n) => n.getAttribute("aria-live") === "polite")!;
     expect(status()).toHaveTextContent("");
     await send("hi");
@@ -253,7 +253,7 @@ describe("a turn", () => {
   test("everything can be done with the keyboard alone", async () => {
     api({ ...CREATE, [TURN]: () => streamResponse([sseBlock("delta", { text: "hi back" }), sseBlock("done", {})]) });
     show();
-    await screen.findByText("Say hello to start the conversation.");
+    await screen.findByText("Ask about projects, items, insights or workspace information.");
     expect(field()).toHaveFocus();
     await userEvent.keyboard("hello{Enter}");
     expect(await within(log()).findByText("hi back")).toBeInTheDocument();
@@ -268,7 +268,7 @@ describe("when a turn fails", () => {
   test("a refusal before the answer shows the API's message and request id, with no retry when it would not help", async () => {
     api({ ...CREATE, [TURN]: () => apiError(422, "validation_error", "The request is not valid.", false, "rid-422") });
     show();
-    await screen.findByText("Say hello to start the conversation.");
+    await screen.findByText("Ask about projects, items, insights or workspace information.");
     await send("hi");
     expect(await screen.findByText("The request is not valid.")).toBeInTheDocument();
     expect(screen.getByText("Request ID: rid-422")).toBeInTheDocument();
@@ -283,7 +283,7 @@ describe("when a turn fails", () => {
       [TURN]: () => (++calls === 1 ? apiError(503, "harness_unavailable", "The assistant is down.", true) : streamResponse([sseBlock("delta", { text: "back" }), sseBlock("done", {})])),
     });
     show();
-    await screen.findByText("Say hello to start the conversation.");
+    await screen.findByText("Ask about projects, items, insights or workspace information.");
     await send("same question");
     await screen.findByText("The assistant is down.");
     await userEvent.click(screen.getByRole("button", { name: "Retry" }));
@@ -296,7 +296,7 @@ describe("when a turn fails", () => {
   test("a conversation that no longer exists is forgotten and a new one is offered", async () => {
     api({ ...CREATE, [TURN]: () => apiError(404, "not_found", "Session not found.") });
     show();
-    await screen.findByText("Say hello to start the conversation.");
+    await screen.findByText("Ask about projects, items, insights or workspace information.");
     await send("hi");
     expect(await screen.findByText("This conversation no longer exists.")).toBeInTheDocument();
     expect(localStorage.getItem("chat.sessionId")).toBeNull();
@@ -304,7 +304,7 @@ describe("when a turn fails", () => {
 
     api({ "POST /api/v1/sessions": () => json(201, { id: "s2" }), "GET /api/v1/sessions/s2/messages": () => json(200, { messages: [] }) });
     await userEvent.click(screen.getByRole("button", { name: "Start a new conversation" }));
-    expect(await screen.findByText("Say hello to start the conversation.")).toBeInTheDocument();
+    expect(await screen.findByText("Ask about projects, items, insights or workspace information.")).toBeInTheDocument();
     expect(localStorage.getItem("chat.sessionId")).toBe("s2");
   });
 
@@ -322,7 +322,7 @@ describe("when a turn fails", () => {
           : streamResponse([sseBlock("delta", { text: "Done properly" }), sseBlock("done", {})]),
     });
     show();
-    await screen.findByText("Say hello to start the conversation.");
+    await screen.findByText("Ask about projects, items, insights or workspace information.");
     await send("do it");
     expect(await screen.findByText("The assistant is temporarily unavailable.")).toBeInTheDocument();
     expect(screen.getByText("Request ID: rid-evt")).toBeInTheDocument();
@@ -339,7 +339,7 @@ describe("when a turn fails", () => {
   test("an error that is not retryable offers no retry", async () => {
     api({ ...CREATE, [TURN]: () => streamResponse([sseBlock("error", { code: "harness_misconfigured", retryable: false, requestId: "r" })]) });
     show();
-    await screen.findByText("Say hello to start the conversation.");
+    await screen.findByText("Ask about projects, items, insights or workspace information.");
     await send("hi");
     expect(await screen.findByText("No assistant is configured for this deployment.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
@@ -348,7 +348,7 @@ describe("when a turn fails", () => {
   test("a code the page does not know gets the default sentence and never shows the code", async () => {
     api({ ...CREATE, [TURN]: () => streamResponse([sseBlock("error", { code: "arn:aws:iam::123456789012:role/secret", retryable: false, requestId: null })]) });
     show();
-    await screen.findByText("Say hello to start the conversation.");
+    await screen.findByText("Ask about projects, items, insights or workspace information.");
     await send("hi");
     expect(await screen.findByText("The response could not be completed.")).toBeInTheDocument();
     expect(document.body).not.toHaveTextContent("arn:aws");
@@ -358,7 +358,7 @@ describe("when a turn fails", () => {
   test("a response that stops without an end says it was interrupted, keeps the text and can be retried", async () => {
     api({ ...CREATE, [TURN]: () => streamResponse([sseBlock("delta", { text: "half an ans" })]) });
     show();
-    await screen.findByText("Say hello to start the conversation.");
+    await screen.findByText("Ask about projects, items, insights or workspace information.");
     await send("hi");
     expect(await screen.findByText("The response was interrupted.")).toBeInTheDocument();
     expect(within(log()).getByText("half an ans")).toBeInTheDocument();
@@ -368,7 +368,7 @@ describe("when a turn fails", () => {
   test("the page can be left with the keyboard from a failure: retry and new conversation are real buttons", async () => {
     api({ ...CREATE, [TURN]: () => apiError(503, "harness_unavailable", "Down.", true) });
     show();
-    await screen.findByText("Say hello to start the conversation.");
+    await screen.findByText("Ask about projects, items, insights or workspace information.");
     await send("hi");
     await screen.findByText("Down.");
     const retry = screen.getByRole("button", { name: "Retry" });

@@ -6,6 +6,7 @@ from functools import cache
 from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from app.clients.aws import table
 from app.core.config import settings
 from app.core.errors import InvalidTokenError
 from app.core.logging import get_logger
@@ -13,9 +14,12 @@ from app.harness.client import AgentCoreHarness, BotoInvoker, RawInvoker
 from app.harness.fake import FakeMemory
 from app.harness.memory import AgentCoreMemory
 from app.harness.replay import ReplayHarness
+from app.repositories.dynamo import DynamoItemStore, DynamoSessionStore
+from app.repositories.in_memory_items import InMemoryItemStore
 from app.repositories.in_memory_sessions import InMemorySessionStore
 from app.services.history import HistoryService
-from app.services.ports import HarnessPort, MemoryPort, SessionStore, ToolPort
+from app.services.items import ItemService
+from app.services.ports import HarnessPort, ItemStore, MemoryPort, SessionStore, ToolPort
 from app.services.sessions import SessionService
 from app.services.turn import TurnService
 from app.tools import builtin
@@ -49,7 +53,21 @@ def current_user(credentials: HTTPAuthorizationCredentials | None = Depends(_bea
 # replaces it with `app.dependency_overrides[factory] = ...` and needs no AWS.
 @cache
 def session_store() -> SessionStore:
-    return InMemorySessionStore()  # ST-05 replaces this with the DynamoDB repository
+    if settings.use_dynamodb:
+        return DynamoSessionStore(table(settings.sessions_table_name))
+    return InMemorySessionStore()
+
+
+@cache
+def item_store() -> ItemStore:
+    if settings.use_dynamodb:
+        return DynamoItemStore(table(settings.items_table_name))
+    return InMemoryItemStore()
+
+
+@cache
+def item_service() -> ItemService:
+    return ItemService(item_store())
 
 
 @cache

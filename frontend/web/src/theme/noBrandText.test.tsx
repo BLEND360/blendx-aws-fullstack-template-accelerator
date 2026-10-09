@@ -33,8 +33,8 @@ beforeEach(() => {
 
 test.each([
   ["/", "Welcome"],
-  ["/items", "No items yet. Create your first one."],
-  ["/chat", "Say hello to start the conversation."],
+  ["/items", "No items yet"],
+  ["/chat", "How can I help?"],
   ["/nowhere", "Page not found"],
 ])("the page at %s names no brand", async (path, loaded) => {
   renderApp(path);

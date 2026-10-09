@@ -1,7 +1,6 @@
 import { apiFetch } from "../../api/client";
 
-/** The items contract, as ST-05 is expected to fix it. This is the only module
- * that knows it: if ST-05 differs, the change lands here. */
+/** The items contract (backend /api/v1/items). This is the only module that knows it. */
 export interface Item {
   id: string;
   name: string;
@@ -21,4 +20,16 @@ export async function listItems(signal?: AbortSignal): Promise<Item[]> {
 
 export function createItem(input: NewItem): Promise<Item> {
   return apiFetch<Item>("/api/v1/items", { method: "POST", body: input });
+}
+
+/** An empty description clears it; the API treats null as "remove". */
+export function updateItem(id: string, input: NewItem): Promise<Item> {
+  return apiFetch<Item>(`/api/v1/items/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: { name: input.name, description: input.description?.trim() ? input.description : null },
+  });
+}
+
+export async function deleteItem(id: string): Promise<void> {
+  await apiFetch<void>(`/api/v1/items/${encodeURIComponent(id)}`, { method: "DELETE" });
 }

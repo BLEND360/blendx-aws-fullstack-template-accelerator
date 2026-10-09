@@ -71,7 +71,7 @@ one with an empty name (field error); stop the API and reload (service unavailab
 | `src/features/chat/` | The chat: timeline state (`chatState`), the conversation and turn hooks, the page, the tool card |
 | `src/features/items/` | The example page: list, create, field errors, service errors. Copy it |
 | `src/messages.ts` | Fixed UI strings; the UI shows these or an API error's own message, never a response body |
-| `dev/items-standin.ts` | Dev-only stand-in for `/api/v1/items` until ST-05 |
+| `dev/items-standin.ts` | Test double for `/api/v1/items`, used by the page tests (the dev server proxies to the real API) |
 
 A new page is a folder under `src/features/`, a route in `src/App.tsx` and a row in
 the nav list in `src/components/AppShell.tsx`.
@@ -85,8 +85,8 @@ the real one. `npm run check:boundaries` fails, naming file and line, if a color
 literal, a font family or an import of a tokens file appears outside the folder.
 It is textual: it does not see named colors (`red`) or values built at runtime.
 
-## Retire the items stand-in
+## The items contract
 
-When ST-05 ships `/api/v1/items`: delete `dev/items-standin.ts` and the
-`itemsStandIn()` line in `vite.config.ts`. If the real contract differs from the
-one in `src/features/items/api.ts`, that file is the only place to change.
+`/api/v1/items` is served by the backend (ST-05). `dev/items-standin.ts` is a test double of it
+that the page tests use; if the real contract changes, update it and `src/features/items/api.ts`
+together (that file is the only place the SPA knows the contract).

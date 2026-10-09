@@ -7,6 +7,7 @@ project.toml; deployed, the app stack sets them on the ECS task.
 """
 
 import os
+from typing import Literal
 
 from pydantic import ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -26,6 +27,10 @@ class Settings(BaseSettings):
     harness_arn: str = ""
     harness_endpoint: str
     allowed_model_ids: list[str]  # JSON list, e.g. ["model-a"]
+
+    # Where sessions and items live. "auto": DynamoDB in a deployed task, process memory locally,
+    # so a laptop needs no tables. "dynamodb" locally uses the tables named above, with your credentials.
+    data_store: Literal["auto", "memory", "dynamodb"] = "auto"
 
     # Turn streaming. The idle limit is the longest the harness may stay silent
     # (botocore's read timeout): a slow turn keeps producing events, a hung one
@@ -64,6 +69,10 @@ class Settings(BaseSettings):
             or os.getenv("ECS_CONTAINER_METADATA_URI")
             or os.getenv("AWS_EXECUTION_ENV")
         )
+
+    @property
+    def use_dynamodb(self) -> bool:
+        return self.data_store == "dynamodb" or (self.data_store == "auto" and self.running_on_ecs)
 
     @property
     def auth_bypass_enabled(self) -> bool:

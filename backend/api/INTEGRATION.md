@@ -136,9 +136,9 @@ until the API restarts.
 `uv run pytest` needs no credentials. The harness is replayed from recorded streams in
 [`app/harness/fixtures/`](app/harness/fixtures/) through the real translator (text, a tool call,
 a tool the harness ran itself, a split protocol marker, a failure mid-stream), and the memory and
-the session store are in-process stand-ins. Sessions live in process memory until ST-05 provides
-the DynamoDB store, so they do not survive a restart and are not valid with more than one task;
-the app logs `session_store_in_memory` at startup to say so.
+the stores are in-process stand-ins. Locally, sessions and items live in process memory (`DATA_STORE=auto`),
+so they do not survive a restart; the app logs `data_store_in_memory` at startup to say so. In a deployed
+task they live in DynamoDB; `DATA_STORE=dynamodb` does the same on a laptop, against the tables of the data stack.
 
 `real_text_only.json` and `real_tool_call.json` were recorded from a deployed starter harness (the
 reply to a tool result begins with an echo of it, and the harness only accepts a tool result as JSON

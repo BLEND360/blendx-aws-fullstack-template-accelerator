@@ -1,9 +1,11 @@
-import { Alert, Button, Flex, Layout, Menu, Space, Switch, Typography, theme } from "antd";
+import { ExclamationCircleOutlined, MoonOutlined, SunOutlined } from "@ant-design/icons";
+import { Button, Layout, Menu, Switch } from "antd";
 import { Link, Outlet, useLocation } from "react-router";
 import { useAuth } from "../auth/useAuth";
 import { messages } from "../messages";
 import { useThemeMode } from "../theme/ThemeModeProvider";
 import { BrandLogo } from "../tokens";
+import "../ui/design.css";
 
 // Adding a page to the app = a route in App.tsx plus a row here.
 const NAV = [
@@ -15,36 +17,48 @@ const NAV = [
 export function AppShell() {
   const { state, signOut } = useAuth();
   const { mode, setMode } = useThemeMode();
-  const { token } = theme.useToken();
   const { pathname } = useLocation();
   const user = state.status === "authenticated" || state.status === "local" ? state.user : null;
 
   return (
-    <Layout style={{ minHeight: "100vh" }}>
-      {state.status === "local" && <Alert banner type="warning" title={messages.localMode} />}
-      <Layout.Header style={{ background: token.colorBgContainer, paddingInline: 24 }}>
-        <Flex align="center" gap="large" style={{ height: "100%" }}>
-          <BrandLogo height={32} mode={mode} />
+    <Layout className="app-shell">
+      {state.status === "local" && (
+        <div className="dev-banner" role="status">
+          <ExclamationCircleOutlined aria-hidden />
+          {messages.localMode}
+        </div>
+      )}
+      <Layout.Header className="app-header">
+        <div className="app-header-inner">
+          <BrandLogo height={30} mode={mode} />
           <Menu
+            className="app-nav"
             mode="horizontal"
             selectedKeys={[pathname]}
-            style={{ flex: 1, minWidth: 0, borderBottom: "none" }}
             items={NAV.map(({ path, label }) => ({ key: path, label: <Link to={path}>{label}</Link> }))}
           />
-          <Space size="middle">
+          <div className="app-user">
             <Switch
+              size="small"
               checked={mode === "dark"}
               onChange={(checked) => setMode(checked ? "dark" : "light")}
-              checkedChildren="🌙"
-              unCheckedChildren="☀"
+              checkedChildren={<MoonOutlined />}
+              unCheckedChildren={<SunOutlined />}
               aria-label={messages.darkMode}
             />
-            {user && <Typography.Text>{user.name}</Typography.Text>}
+            {user && (
+              <span className="app-user-name">
+                <span className="app-user-avatar" aria-hidden>
+                  {user.name.slice(0, 1).toUpperCase()}
+                </span>
+                <span>{user.name}</span>
+              </span>
+            )}
             {state.status === "authenticated" && <Button onClick={signOut}>{messages.signOut}</Button>}
-          </Space>
-        </Flex>
+          </div>
+        </div>
       </Layout.Header>
-      <Layout.Content style={{ padding: 24 }}>
+      <Layout.Content className="app-content">
         <Outlet />
       </Layout.Content>
     </Layout>

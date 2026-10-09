@@ -1,3 +1,4 @@
+import { SendOutlined } from "@ant-design/icons";
 import { Button, Flex, Input, Typography } from "antd";
 import type { TextAreaRef } from "antd/es/input/TextArea";
 import { useEffect, useRef, useState } from "react";
@@ -33,7 +34,7 @@ export function Composer({ disabled, onSend }: ComposerProps) {
 
   return (
     <Flex vertical gap={4}>
-      <Flex gap="small" align="flex-end">
+      <div className={`chat-composer${tooLong ? " chat-composer--error" : ""}`}>
         <Input.TextArea
           ref={input}
           value={value}
@@ -49,12 +50,10 @@ export function Composer({ disabled, onSend }: ComposerProps) {
           aria-invalid={tooLong || undefined}
           placeholder={messages.chatPlaceholder}
           autoSize={{ minRows: 1, maxRows: 6 }}
-          status={tooLong ? "error" : undefined}
+          variant="borderless"
         />
-        <Button type="primary" onClick={submit} disabled={!canSend}>
-          {messages.chatSend}
-        </Button>
-      </Flex>
+        <Button type="primary" shape="circle" icon={<SendOutlined />} aria-label={messages.chatSend} onClick={submit} disabled={!canSend} />
+      </div>
       {tooLong && (
         <Typography.Text id="composer-too-long" type="danger" role="alert">
           {messages.chatTooLong} ({value.length} / {MAX_MESSAGE_CHARS})

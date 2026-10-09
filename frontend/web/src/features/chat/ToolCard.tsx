@@ -36,7 +36,7 @@ function Block({ title, value }: { title: string; value: unknown }) {
 export function ToolCard({ item }: { item: ToolItem }): ReactNode {
   const status = STATUS[item.status];
   return (
-    <Card size="small" role="group" aria-label={`${item.label}: ${status.text}`}>
+    <Card size="small" className={`chat-tool chat-tool--${item.status}`} role="group" aria-label={`${item.label}: ${status.text}`}>
       <Flex vertical gap="small">
         <Flex align="center" justify="space-between" gap="small">
           <Typography.Text strong>{item.label}</Typography.Text>
