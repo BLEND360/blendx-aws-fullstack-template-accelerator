@@ -21,6 +21,31 @@ and the backend must have `LOCAL_AUTH_BYPASS=true` (the generated
 required and local mode is not offered. Everything else the deployment decides
 (models, ...) comes from `GET /api/v1/configuration`; the SPA keeps no copy.
 
+## The chat
+
+`/chat` is a conversation with the agent: the answer streams in as it is written, and when the agent
+uses a tool a card shows it running and then what came out. The conversation is remembered in this
+browser, so a reload brings the history back; **New conversation** starts another.
+
+It talks to `POST /api/v1/sessions/{id}/messages`, which answers with server-sent events. A `POST`
+cannot use `EventSource`, so `src/api/turns.ts` reads the response body itself and `src/api/events.ts`
+parses it (the same events however the network splits them).
+
+### Showing it without AWS
+
+Start the API with recorded answers and the whole chat works with no credentials and no harness:
+
+```powershell
+cd backend/api
+$env:HARNESS_REPLAY = "true"          # bash: HARNESS_REPLAY=true uv run uvicorn ...
+uv run uvicorn app.main:app --reload
+```
+
+A message containing the word **tool** plays the recorded turn that calls a tool (and the tool really
+runs); anything else plays the recorded text turn. The answer does not depend on the question, so the
+page shows a "Demo mode" notice. Reloading keeps the history; restarting the API forgets it. It is ignored
+in a deployed task. `HARNESS_REPLAY_DELAY_SECONDS` (default `0.04`) sets the pause between events.
+
 ## Test it
 
 ```bash
@@ -43,6 +68,7 @@ one with an empty name (field error); stop the API and reload (service unavailab
 | `src/api/` | `apiFetch` (the only `fetch`), `ApiError`, session token, typed endpoint calls |
 | `src/ui/` | Presentational pieces shared by every layer above `api`: `ApiErrorAlert`, `LoadingIndicator` |
 | `src/auth/` | Session state machine (PKCE, rehydration, local mode) and the route guard |
+| `src/features/chat/` | The chat: timeline state (`chatState`), the conversation and turn hooks, the page, the tool card |
 | `src/features/items/` | The example page: list, create, field errors, service errors. Copy it |
 | `src/messages.ts` | Fixed UI strings; the UI shows these or an API error's own message, never a response body |
 | `dev/items-standin.ts` | Dev-only stand-in for `/api/v1/items` until ST-05 |

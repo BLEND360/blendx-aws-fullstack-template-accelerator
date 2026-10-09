@@ -1,4 +1,4 @@
-import { ApiError, apiFetch } from "./client";
+import { ApiError, apiFetch, apiOpenStream } from "./client";
 import { session } from "./session";
 
 const json = (status: number, body: unknown, headers: Record<string, string> = {}) =>
@@ -123,4 +123,52 @@ test("paths outside /api and /auth do not compile", () => {
   void (() => apiFetch("https://elsewhere.test/x"));
   // @ts-expect-error neither are unprefixed paths
   void (() => apiFetch("/other/x"));
+});
+
+// --- apiOpenStream -------------------------------------------------------------------
+describe("apiOpenStream", () => {
+  test("sends the token and asks for an event stream, then hands over the response untouched", async () => {
+    session.setToken("tok");
+    const body = new Response("event: done\ndata: {}\n\n", { status: 200, headers: { "Content-Type": "text/event-stream" } });
+    fetchMock.mockResolvedValue(body);
+    const response = await apiOpenStream("/api/v1/sessions/s1/messages", { method: "POST", body: { text: "hi" } });
+    const [url, init] = fetchMock.mock.calls[0];
+    const headers = new Headers(init?.headers);
+    expect(url).toBe("/api/v1/sessions/s1/messages");
+    expect(headers.get("Accept")).toBe("text/event-stream");
+    expect(headers.get("Authorization")).toBe("Bearer tok");
+    expect(init?.body).toBe('{"text":"hi"}');
+    expect(response).toBe(body); // the caller reads the body itself
+    expect(await response.text()).toContain("event: done");
+  });
+
+  test("a refusal before the stream is the same classified error as for any other request", async () => {
+    fetchMock.mockResolvedValue(
+      json(404, { error: { code: "not_found", message: "Session not found.", retryable: false, requestId: "rid-s" } }),
+    );
+    expect(await failure(apiOpenStream("/api/v1/sessions/x/messages", { method: "POST", body: {} }))).toMatchObject({
+      status: 404,
+      code: "not_found",
+      requestId: "rid-s",
+    });
+  });
+
+  test("a 401 notifies the session before the error is thrown", async () => {
+    const handler = vi.fn();
+    session.onUnauthorized(handler);
+    fetchMock.mockResolvedValue(json(401, { error: { code: "auth_invalid_token", message: "Sign in again." } }));
+    await failure(apiOpenStream("/api/v1/sessions/x/messages", { method: "POST", body: {} }));
+    expect(handler).toHaveBeenCalledOnce();
+  });
+
+  test("a network failure and an abort behave as they do for apiFetch", async () => {
+    fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
+    expect(await failure(apiOpenStream("/api/v1/sessions/x/messages"))).toMatchObject({ code: "network_error", retryable: true });
+
+    const controller = new AbortController();
+    controller.abort();
+    const abort = new DOMException("aborted", "AbortError");
+    fetchMock.mockRejectedValue(abort);
+    await expect(apiOpenStream("/api/v1/sessions/x/messages", { signal: controller.signal })).rejects.toBe(abort);
+  });
 });

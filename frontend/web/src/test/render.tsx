@@ -6,7 +6,7 @@ import { AuthProvider } from "../auth/AuthProvider";
 import { ThemeModeProvider } from "../theme/ThemeModeProvider";
 
 export const USER = { id: "local-dev-user", name: "Local Dev", email: "local-dev@example.test", roles: [] };
-export const CONFIG = { allowedModelIds: ["model-a", "model-b"], defaultModelId: "model-a" };
+export const CONFIG = { allowedModelIds: ["model-a", "model-b"], defaultModelId: "model-a", replayMode: false };
 
 export const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });

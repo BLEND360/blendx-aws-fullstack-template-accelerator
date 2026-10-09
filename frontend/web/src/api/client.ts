@@ -98,8 +98,10 @@ async function toApiError(response: Response): Promise<ApiError> {
   return new ApiError({ ...unexpectedError(response.status), requestId: headerId });
 }
 
-export async function apiFetch<T>(path: ApiPath, request: ApiRequest = {}): Promise<T> {
-  const headers = new Headers({ Accept: "application/json" });
+/** The one place a request leaves the app: authentication, error classification and the 401 signal.
+ * Returns the response only when it is 2xx; anything else is an ApiError. */
+async function send(path: ApiPath, request: ApiRequest, accept: string): Promise<Response> {
+  const headers = new Headers({ Accept: accept });
   if (request.body !== undefined) headers.set("Content-Type", "application/json");
   const token = session.getToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
@@ -117,14 +119,25 @@ export async function apiFetch<T>(path: ApiPath, request: ApiRequest = {}): Prom
     throw new ApiError({ status: null, code: "network_error", message: messages.networkError, retryable: true });
   }
 
-  if (response.ok) {
-    if (response.status === 204) return undefined as T;
-    try {
-      return (await response.json()) as T;
-    } catch {
-      throw unexpectedError(response.status);
-    }
+  if (!response.ok) {
+    if (response.status === 401) session.notifyUnauthorized();
+    throw await toApiError(response);
   }
-  if (response.status === 401) session.notifyUnauthorized();
-  throw await toApiError(response);
+  return response;
+}
+
+export async function apiFetch<T>(path: ApiPath, request: ApiRequest = {}): Promise<T> {
+  const response = await send(path, request, "application/json");
+  if (response.status === 204) return undefined as T;
+  try {
+    return (await response.json()) as T;
+  } catch {
+    throw unexpectedError(response.status);
+  }
+}
+
+/** Opens a streamed response (server-sent events). The caller reads `response.body`; everything
+ * that can go wrong before the stream starts has already been turned into an ApiError. */
+export function apiOpenStream(path: ApiPath, request: ApiRequest = {}): Promise<Response> {
+  return send(path, request, "text/event-stream");
 }

@@ -36,6 +36,38 @@ test("the items page is reachable by URL and from the menu", async () => {
   expect(await screen.findByRole("heading", { name: "Items" })).toBeInTheDocument();
 }, 15_000); // three navigations; the default 5s is tight on a slow CI runner
 
+test("the chat is reachable by URL and from the menu, and starts a conversation", async () => {
+  api({
+    "/api/v1/sessions": () => json(201, { id: "s1" }),
+    "/api/v1/sessions/s1/messages": () => json(200, { messages: [] }),
+  });
+  renderApp("/chat");
+  expect(await screen.findByText("Say hello to start the conversation.")).toBeInTheDocument();
+  expect(screen.getByRole("textbox", { name: "Message" })).toBeInTheDocument();
+
+  await userEvent.click(within(screen.getByRole("menu")).getByRole("link", { name: "Home" }));
+  expect(await screen.findByRole("heading", { name: "Welcome" })).toBeInTheDocument();
+  await userEvent.click(within(screen.getByRole("menu")).getByRole("link", { name: "Chat" }));
+  expect(await screen.findByText("Say hello to start the conversation.")).toBeInTheDocument();
+}, 15_000);
+
+test("the chat is as protected as every other page: without the backend bypass it is not shown", async () => {
+  api({ "/auth/me": () => json(401, { error: { code: "auth_invalid_token", message: "Sign in again.", retryable: false } }) });
+  renderApp("/chat");
+  expect(await screen.findByText(/LOCAL_AUTH_BYPASS=true/)).toBeInTheDocument();
+  expect(screen.queryByRole("textbox", { name: "Message" })).not.toBeInTheDocument();
+});
+
+test("a deployment that answers with recordings says so on the chat page", async () => {
+  api({
+    "/api/v1/configuration": () => json(200, { ...CONFIG, replayMode: true }),
+    "/api/v1/sessions": () => json(201, { id: "s1" }),
+    "/api/v1/sessions/s1/messages": () => json(200, { messages: [] }),
+  });
+  renderApp("/chat");
+  expect(await screen.findByText("Demo mode: these responses are recorded, not live.")).toBeInTheDocument();
+});
+
 test("local mode is announced on screen and offers no sign-out", async () => {
   api();
   renderApp("/");

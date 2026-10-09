@@ -8,6 +8,7 @@ import { BrandLogo } from "../tokens";
 // Adding a page to the app = a route in App.tsx plus a row here.
 const NAV = [
   { path: "/", label: messages.navHome },
+  { path: "/chat", label: messages.navChat },
   { path: "/items", label: messages.navItems },
 ];
 

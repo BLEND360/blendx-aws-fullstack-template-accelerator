@@ -3,6 +3,7 @@ import { ProtectedRoute } from "./auth/ProtectedRoute";
 import { AppShell } from "./components/AppShell";
 import { ConfigGate } from "./components/ConfigGate";
 import { ItemsPage } from "./features/items/ItemsPage";
+import { Chat } from "./pages/Chat";
 import { Home } from "./pages/Home";
 import { Login } from "./pages/Login";
 import { NotFound } from "./pages/NotFound";
@@ -16,6 +17,7 @@ export function App() {
         <Route element={<ConfigGate />}>
           <Route element={<AppShell />}>
             <Route index element={<Home />} />
+            <Route path="chat" element={<Chat />} />
             <Route path="items" element={<ItemsPage />} />
           </Route>
         </Route>

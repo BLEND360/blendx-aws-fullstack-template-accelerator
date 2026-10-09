@@ -17,13 +17,24 @@ function userFacingText(): string {
 beforeEach(() => {
   vi.stubGlobal(
     "fetch",
-    itemsFetch((url) => (url === "/auth/me" ? json(200, USER) : url === "/api/v1/configuration" ? json(200, CONFIG) : json(404, {}))),
+    itemsFetch((url) =>
+      url === "/auth/me"
+        ? json(200, USER)
+        : url === "/api/v1/configuration"
+          ? json(200, CONFIG)
+          : url === "/api/v1/sessions"
+            ? json(201, { id: "s1" })
+            : url === "/api/v1/sessions/s1/messages"
+              ? json(200, { messages: [] })
+              : json(404, {}),
+    ),
   );
 });
 
 test.each([
   ["/", "Welcome"],
   ["/items", "No items yet. Create your first one."],
+  ["/chat", "Say hello to start the conversation."],
   ["/nowhere", "Page not found"],
 ])("the page at %s names no brand", async (path, loaded) => {
   renderApp(path);
