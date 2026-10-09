@@ -14,7 +14,6 @@ TEST_ENV = {
     "HARNESS_ARN": "",
     "HARNESS_ENDPOINT": "PROD",
     "ALLOWED_MODEL_IDS": '["model-a"]',
-    "CORS_ORIGINS": "http://localhost:5173",
     "LOCAL_AUTH_BYPASS": "false",
     "AWS_ACCESS_KEY_ID": "testing",
     "AWS_SECRET_ACCESS_KEY": "testing",

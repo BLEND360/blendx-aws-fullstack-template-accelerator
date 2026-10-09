@@ -2,14 +2,12 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
-from app.core.context import REQUEST_ID_HEADER
 from app.core.exception_handlers import register_exception_handlers
 from app.core.logging import get_logger
 from app.core.middleware import CorrelationIdMiddleware
-from app.routers import health, sessions, turns
+from app.routers import auth, configuration, health, sessions, turns
 
 logger = get_logger(__name__)
 
@@ -27,24 +25,14 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(title=settings.project_name, lifespan=lifespan)
 
-# Order matters. Starlette applies middleware in reverse registration order,
-# so CORS, registered last, is outermost and attaches its headers to error
-# responses too. Otherwise a 500 reaches the browser as an opaque CORS failure
-# and the real status is invisible.
+# No CORS: the SPA and the API share an origin (the dev proxy locally,
+# CloudFront in production), so the browser never makes a cross-origin call.
 app.add_middleware(CorrelationIdMiddleware)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins_list,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    # JS cannot read a response header that is not exposed; the SPA needs the
-    # id to put in a bug report.
-    expose_headers=[REQUEST_ID_HEADER],
-)
 register_exception_handlers(app)
 
 app.include_router(health.router)
+app.include_router(configuration.router)
+app.include_router(auth.router)
 app.include_router(sessions.router)
 app.include_router(turns.router)
 
