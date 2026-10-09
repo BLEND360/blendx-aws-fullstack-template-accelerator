@@ -101,7 +101,8 @@ def test_tool_results_go_back_as_an_assistant_tool_use_then_a_user_tool_result()
     run(harness(invoker), request(messages=messages))
     assert invoker.calls[0]["messages"] == [
         {"role": "assistant", "content": [{"toolUse": {"toolUseId": "tooluse_1", "name": "current_time", "input": {"format": "unix"}}}]},
-        {"role": "user", "content": [{"toolResult": {"toolUseId": "tooluse_1", "status": "success", "content": [{"json": {"time": 1}}]}}]},
+        # The harness's runtime rejects {"json": ...} ("unsupported type"); the result goes back as JSON text.
+        {"role": "user", "content": [{"toolResult": {"toolUseId": "tooluse_1", "status": "success", "content": [{"text": '{"time": 1}'}]}}]},
     ]
 
 

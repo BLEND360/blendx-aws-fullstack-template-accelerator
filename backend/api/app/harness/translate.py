@@ -31,7 +31,8 @@ from app.harness.text_filter import MarkerFilter
 _SUCCESS = frozenset({"end_turn", "stop_sequence", "max_tokens", "max_output_tokens_exceeded"})
 _RETRYABLE = frozenset({"timeout_exceeded", "interrupted", "partial_turn", "malformed_model_output", "malformed_tool_use"})
 # Anything else (content_filtered, model_context_window_exceeded, max_iterations_exceeded,
-# hook_stopped, tool_result, or a value this code has not seen) is not worth retrying as is.
+# hook_stopped, or a value this code has not seen) is not worth retrying as is.
+# "tool_result" is not an outcome at all: see translate().
 
 
 @dataclass
@@ -101,6 +102,11 @@ def translate(raw: Iterable[dict[str, Any]], marker_filter: MarkerFilter) -> Ite
                     status = "success" if block.status == "success" else "error"
                     yield ManagedToolResult(block.call_id, block.name, status, {"content": block.parts})
             elif kind == "messageStop":
+                if body["stopReason"] == "tool_result":
+                    # Answering a tool result, the service first echoes it back as a message of its own
+                    # ("user" role, stopReason tool_result) and only then streams the assistant's reply.
+                    # That echo ends nothing: keep reading for the real end of the turn.
+                    continue
                 if tail := marker_filter.flush():
                     yield TextDelta(tail)
                 yield _stop(body["stopReason"])

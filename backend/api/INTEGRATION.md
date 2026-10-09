@@ -98,9 +98,9 @@ and `HARNESS_ENDPOINT`. No code changes. The task role needs `InvokeHarness` on 
 [`infra/definitions/roles.py`](../../infra/definitions/roles.py) (`invoke_harness`, `get_harness`,
 `harness_memory`) and the app stack attaches them (ST-07).
 
-Open question to confirm against a real harness: when a session has local tools the call sends
-a `tools` list, and AgentCore documents that list as overriding the harness's own tools. With no
-local tools nothing is sent and the harness keeps its own.
+Still open (the starter harness has no tools of its own, so it could not be tested): when a session
+has local tools the call sends a `tools` list, and AgentCore documents that list as overriding the
+harness's own tools. With no local tools nothing is sent and the harness keeps its own.
 
 ## Slow turn or hung turn
 
@@ -126,5 +126,8 @@ the session store are in-process stand-ins. Sessions live in process memory unti
 the DynamoDB store, so they do not survive a restart and are not valid with more than one task;
 the app logs `session_store_in_memory` at startup to say so.
 
-The fixtures are built from the AgentCore service model, not recorded from a live harness.
-Re-record them once one is deployed.
+`real_text_only.json` and `real_tool_call.json` were recorded from a deployed starter harness (the
+reply to a tool result begins with an echo of it, and the harness only accepts a tool result as JSON
+*text*). The others (`text_only`, `tool_call`, `managed_tool`, `bad_tool_input`, `marker_split`,
+`fails_midstream`) are synthetic, built from the AgentCore service model, because a starter harness
+cannot be made to produce them.

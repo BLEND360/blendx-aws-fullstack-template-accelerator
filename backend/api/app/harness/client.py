@@ -8,6 +8,7 @@ Two halves, so the interesting one is testable without AWS:
 
 import asyncio
 import contextvars
+import json
 import threading
 from collections.abc import AsyncIterator, Callable, Iterator
 from typing import Any, Protocol
@@ -85,7 +86,9 @@ def _blocks(message: HarnessMessage) -> list[dict[str, Any]]:
         {"toolUse": {"toolUseId": c.call_id, "name": c.name, "input": c.input}} for c in message.tool_calls
     )
     blocks.extend(
-        {"toolResult": {"toolUseId": r.call_id, "status": r.status, "content": [{"json": r.content}]}}
+        # The result goes back as JSON *text*: the harness's runtime rejects a {"json": ...} content block
+        # ("unsupported type"), as found against a deployed harness.
+        {"toolResult": {"toolUseId": r.call_id, "status": r.status, "content": [{"text": json.dumps(r.content)}]}}
         for r in message.tool_results
     )
     return blocks

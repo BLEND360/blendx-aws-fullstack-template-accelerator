@@ -110,12 +110,45 @@ def test_these_stop_reasons_are_retryable_availability_errors(reason):
 
 @pytest.mark.parametrize(
     "reason",
-    ["content_filtered", "model_context_window_exceeded", "max_iterations_exceeded", "hook_stopped", "tool_result", "something_new"],
+    ["content_filtered", "model_context_window_exceeded", "max_iterations_exceeded", "hook_stopped", "something_new"],
 )
 def test_the_others_are_not_retryable(reason):
     with pytest.raises(AppError) as raised:
         run(stream_of(reason))
     assert (raised.value.code, raised.value.retryable) == ("harness_invalid_request", False)
+
+
+def test_tool_result_is_an_echo_not_an_end_so_a_stream_that_stops_there_is_incomplete():
+    with pytest.raises(AppError) as raised:
+        run(stream_of("tool_result"))
+    assert (raised.value.code, raised.value.retryable) == ("harness_unavailable", True)
+
+
+# --- streams recorded from a deployed harness -----------------------------------------
+def test_a_real_text_turn_translates_to_text_then_the_end():
+    events = run(fixtures.load("real_text_only")[0])
+    assert "".join(e.text for e in events if isinstance(e, TextDelta)).strip()
+    assert events[-1] == TurnEnded(needs_tools=False)
+
+
+def test_a_real_tool_call_arrives_as_started_ready_and_a_request_to_run_tools():
+    events = run(fixtures.load("real_tool_call")[0])
+    started = [e for e in events if isinstance(e, ToolCallStarted)]
+    ready = [e for e in events if isinstance(e, ToolCallReady)]
+    assert [s.name for s in started] == ["current_time"] and started[0].call_id.startswith("tooluse_")
+    assert ready[0].input == {"format": "iso"}
+    assert events[-1] == TurnEnded(needs_tools=True)
+
+
+def test_the_reply_to_a_tool_result_starts_with_an_echo_that_does_not_end_the_turn():
+    # The service answers a tool result with two messages: the result echoed back
+    # (stopReason tool_result), then the assistant's answer (end_turn).
+    events = run(fixtures.load("real_tool_call")[1])
+    assert [type(e).__name__ for e in events].count("TurnEnded") == 1
+    assert events[-1] == TurnEnded(needs_tools=False)
+    assert "".join(e.text for e in events if isinstance(e, TextDelta)).strip()  # the answer was not dropped
+    echoes = [e for e in events if isinstance(e, ManagedToolResult)]
+    assert len(echoes) == 1 and echoes[0].status == "success"
 
 
 # --- failures ----------------------------------------------------------------------

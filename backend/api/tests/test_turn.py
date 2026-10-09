@@ -1,6 +1,7 @@
 """TurnService end to end over the real translator and harness adapter, fed recorded streams."""
 
 import asyncio
+import json
 import logging
 from datetime import UTC, datetime
 
@@ -169,7 +170,7 @@ def test_a_local_tool_is_announced_run_and_its_result_sent_back():
     assert second["runtimeSessionId"] == first["runtimeSessionId"]  # the same conversation
     assert second["messages"] == [
         {"role": "assistant", "content": [{"toolUse": {"toolUseId": "tooluse_1", "name": "current_time", "input": {"format": "unix"}}}]},
-        {"role": "user", "content": [{"toolResult": {"toolUseId": "tooluse_1", "status": "success", "content": [{"json": {"time": int(NOW.timestamp())}}]}}]},
+        {"role": "user", "content": [{"toolResult": {"toolUseId": "tooluse_1", "status": "success", "content": [{"text": json.dumps({"time": int(NOW.timestamp())})}]}}]},
     ]
 
 
@@ -178,13 +179,24 @@ def test_each_calls_events_come_in_the_order_started_input_finished():
     assert kinds.index("ToolStarted") < kinds.index("ToolInput") < kinds.index("ToolFinished")
 
 
+def test_the_harness_echoing_our_own_tool_result_is_not_announced_a_second_time():
+    # Recorded from a deployed harness: its reply to a tool result begins by echoing that result.
+    env = fixture_env("real_tool_call")
+    events = env.play("what time is it")
+    finished = [e for e in events if isinstance(e, ToolFinished)]
+    assert len(finished) == 1 and finished[0].status == "success"  # ours, once
+    assert [type(e).__name__ for e in events if not isinstance(e, Delta)] == ["ToolStarted", "ToolInput", "ToolFinished", "Done"]
+    assert "".join(e.text for e in events if isinstance(e, Delta)).strip()
+    assert len(env.invoker.calls) == 2
+
+
 def test_a_tool_not_enabled_for_the_session_fails_for_the_model_and_the_turn_goes_on():
     env = fixture_env("tool_call")
     events = env.play(record=env.session(tool_ids=[]))
     assert ToolFinished("tooluse_1", "error", {"code": "tool_failed"}) in events
     assert events[-1] == Done()
     sent_back = env.invoker.calls[1]["messages"][1]["content"][0]["toolResult"]
-    assert (sent_back["status"], sent_back["content"]) == ("error", [{"json": {"code": "tool_failed"}}])
+    assert (sent_back["status"], sent_back["content"]) == ("error", [{"text": '{"code": "tool_failed"}'}])
 
 
 def test_a_tool_that_raises_fails_for_the_model_without_its_text_and_the_turn_goes_on():

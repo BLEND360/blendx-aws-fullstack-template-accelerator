@@ -5,8 +5,10 @@ stores its id), reads a session's events across every page, and deletes them.
 Every failure leaves as AppError with a `memory_*` code.
 """
 
+import json
 import threading
 from collections.abc import Callable, Iterator
+from datetime import UTC
 from typing import Any
 
 import boto3
@@ -27,7 +29,31 @@ def _default_client(service: str) -> Any:
 
 
 def _iso(value: Any) -> str:
+    # boto3 returns timestamps in the machine's zone; sessions are in UTC, and mixed offsets do not sort.
+    if hasattr(value, "astimezone"):
+        value = value.astimezone(UTC)
     return value.isoformat() if hasattr(value, "isoformat") else str(value)
+
+
+def _message_text(raw: str | None) -> str | None:
+    """The words of a stored message.
+
+    The harness keeps each message as a JSON document inside the event's text,
+    `{"message": {"role": ..., "content": [{"text": ...}, {"toolUse": ...}]}}`, so the
+    conversation text is the text blocks of that message; a message with only tool
+    calls or tool results has none. Text that is not such a document is kept as it is.
+    """
+    if raw is None:
+        return None
+    try:
+        document = json.loads(raw)
+    except ValueError:
+        return raw
+    message = document.get("message") if isinstance(document, dict) else None
+    if not isinstance(message, dict):
+        return raw
+    parts = [b["text"] for b in message.get("content") or [] if isinstance(b, dict) and isinstance(b.get("text"), str)]
+    return "".join(parts) or None
 
 
 class AgentCoreMemory:
@@ -97,7 +123,8 @@ class AgentCoreMemory:
             if not conversational:
                 yield MemoryEvent(event_id, timestamp, "OTHER", None)  # a blob or json payload: not part of the history
             for item in conversational:
-                yield MemoryEvent(event_id, timestamp, str(item.get("role", "OTHER")), (item.get("content") or {}).get("text"))
+                text = _message_text((item.get("content") or {}).get("text"))
+                yield MemoryEvent(event_id, timestamp, str(item.get("role", "OTHER")), text)
 
     # --- deletion --------------------------------------------------------------------
     def purge(self, memory: MemoryRef) -> None:

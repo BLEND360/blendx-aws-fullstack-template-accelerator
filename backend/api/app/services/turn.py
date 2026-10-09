@@ -84,6 +84,7 @@ class TurnService:
         specs = self._tools.specs_for(values.tool_ids)
         messages = [HarnessMessage("user", text=turn.text)]
         rounds = 0
+        answered: set[str] = set()  # calls whose result this service supplied
         logger.info("turn_started", session_id=record.session_id, model_id=values.model_id)
         try:
             while True:
@@ -102,6 +103,8 @@ class TurnService:
                             ready[event.call_id] = event
                             yield ToolInput(event.call_id, event.input or {})
                         elif isinstance(event, ManagedToolResult):
+                            if event.call_id in answered:
+                                continue  # the harness echoing back the result we just sent: already announced
                             managed.add(event.call_id)
                             yield ToolFinished(event.call_id, event.status, event.content)
                         elif isinstance(event, TurnEnded):
@@ -121,6 +124,7 @@ class TurnService:
                     outcome = await self._run_tool(call, enabled)
                     yield ToolFinished(call.call_id, outcome.status, outcome.public_result)
                     results.append(ToolResultBlock(call.call_id, outcome.status, outcome.result))
+                    answered.add(call.call_id)
                 messages = [
                     HarnessMessage("assistant", tool_calls=tuple(ToolCall(c.call_id, c.name, c.input or {}) for c in pending)),
                     HarnessMessage("user", tool_results=tuple(results)),

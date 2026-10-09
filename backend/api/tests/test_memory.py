@@ -1,5 +1,6 @@
 """AgentCoreMemory against stubbed boto3 clients (no AWS)."""
 
+import json
 from datetime import UTC, datetime
 
 import pytest
@@ -80,6 +81,41 @@ def test_every_page_is_read_and_the_session_and_actor_are_passed_through():
     assert all(c["sessionId"] == MEM.runtime_session_id and c["actorId"] == MEM.actor_id for c in data.list_calls)
     assert all(c["includePayloads"] is True and c["maxResults"] == 100 for c in data.list_calls)
     assert events[0].timestamp == "2026-10-08T10:00:00+00:00"
+
+
+def wrapped(role: str, *blocks: dict) -> str:
+    """How the harness stores a message: a JSON document inside the payload's text."""
+    return json.dumps({"message": {"role": role, "content": list(blocks)}})
+
+
+def test_the_text_is_unwrapped_from_the_message_the_harness_stores():
+    page = [
+        event("1#a", "USER", wrapped("user", {"text": "What time is it?"})),
+        event("2#b", "ASSISTANT", wrapped("assistant", {"text": "It is "}, {"text": "late."})),
+    ]
+    assert [e.text for e in memory_with(FakeControl(), FakeData([page])).list_events(MEM)] == ["What time is it?", "It is late."]
+
+
+def test_a_message_that_is_only_a_tool_call_or_result_has_no_text():
+    page = [
+        event("1#a", "ASSISTANT", wrapped("assistant", {"toolUse": {"toolUseId": "t", "name": "x", "input": {}}})),
+        event("2#b", "USER", wrapped("user", {"toolResult": {"toolUseId": "t", "status": "success", "content": []}})),
+    ]
+    assert [e.text for e in memory_with(FakeControl(), FakeData([page])).list_events(MEM)] == [None, None]
+
+
+def test_text_that_is_not_a_wrapped_message_is_kept_as_it_is():
+    page = [event("1#a", "USER", "plain words"), event("2#b", "USER", '{"not": "a message"}')]
+    assert [e.text for e in memory_with(FakeControl(), FakeData([page])).list_events(MEM)] == ["plain words", '{"not": "a message"}']
+
+
+def test_timestamps_are_reported_in_utc_whatever_zone_boto_returned_them_in():
+    from datetime import datetime, timedelta, timezone
+
+    local = datetime(2026, 10, 9, 11, 10, 11, tzinfo=timezone(timedelta(hours=-5)))
+    page = [{"eventId": "1#a", "eventTimestamp": local, "payload": [{"conversational": {"role": "USER", "content": {"text": "hi"}}}]}]
+    (reduced,) = memory_with(FakeControl(), FakeData([page])).list_events(MEM)
+    assert reduced.timestamp == "2026-10-09T16:10:11+00:00"
 
 
 def test_a_payload_that_is_not_conversational_has_no_text():
