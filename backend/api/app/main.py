@@ -20,6 +20,10 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     logger.warning(
         "session_store_in_memory", detail="Session metadata is held in this process; not valid with more than one task."
     )
+    if settings.replay_enabled:
+        logger.warning("harness_replay_enabled", detail="Turns are answered with recorded streams, not a live harness.")
+    elif settings.harness_replay:
+        logger.warning("harness_replay_ignored", detail="HARNESS_REPLAY is set but this is a deployed task.")
     yield
 
 

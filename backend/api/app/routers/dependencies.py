@@ -10,7 +10,9 @@ from app.core.config import settings
 from app.core.errors import InvalidTokenError
 from app.core.logging import get_logger
 from app.harness.client import AgentCoreHarness, BotoInvoker, RawInvoker
+from app.harness.fake import FakeMemory
 from app.harness.memory import AgentCoreMemory
+from app.harness.replay import ReplayHarness
 from app.repositories.in_memory_sessions import InMemorySessionStore
 from app.services.history import HistoryService
 from app.services.ports import HarnessPort, MemoryPort, SessionStore, ToolPort
@@ -51,8 +53,14 @@ def session_store() -> SessionStore:
 
 
 @cache
+def replay_memory() -> FakeMemory:
+    """Demonstration mode: the conversation lives here, shared by the replay harness (which writes it) and history (which reads it)."""
+    return FakeMemory()
+
+
+@cache
 def harness_memory() -> MemoryPort:
-    return AgentCoreMemory(settings.harness_arn)
+    return replay_memory() if settings.replay_enabled else AgentCoreMemory(settings.harness_arn)
 
 
 @cache
@@ -79,6 +87,8 @@ def raw_invoker() -> RawInvoker:
 
 @cache
 def harness() -> HarnessPort:
+    if settings.replay_enabled:
+        return ReplayHarness(replay_memory(), event_delay_seconds=settings.harness_replay_delay_seconds)
     # Both values come from configuration and nowhere else: pointing the app at another harness is a config change.
     return AgentCoreHarness(
         raw_invoker(),
@@ -91,5 +101,10 @@ def harness() -> HarnessPort:
 @cache
 def turn_service() -> TurnService:
     return TurnService(
-        session_store(), harness(), tool_registry(), harness_arn=settings.harness_arn, max_tool_rounds=settings.max_tool_rounds
+        session_store(),
+        harness(),
+        tool_registry(),
+        # Replay needs no harness, so an empty ARN is not "unconfigured" there.
+        harness_arn="replay" if settings.replay_enabled else settings.harness_arn,
+        max_tool_rounds=settings.max_tool_rounds,
     )

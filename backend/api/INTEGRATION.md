@@ -117,6 +117,20 @@ before it gives up with `tool_failed`. The invocation is **never retried automat
 not idempotent and a retry would put the user's message in the memory twice. The `retryable`
 flag tells the client whether to offer the user a retry.
 
+## Answer with recordings (demonstrations)
+
+`HARNESS_REPLAY=true` makes the API play recorded streams instead of calling a harness, with no AWS
+credentials. It is a `HarnessPort` like the real one (`app/harness/replay.py`): the recordings go through
+the same translator, so the events, their order and the local tool run are the real thing; only the model's
+words are canned. A message containing the word `tool` (any capitalization) plays the recorded tool turn,
+anything else the recorded text turn. The conversation is kept in a process-local memory, so history works
+until the API restarts.
+
+- `GET /api/v1/configuration` reports `replayMode: true`, and the web app shows a "Demo mode" notice.
+- `HARNESS_REPLAY_DELAY_SECONDS` (default `0.04`) is the pause between events, so the streaming is visible.
+- It is ignored in a deployed task (detected like the auth bypass), with a startup warning.
+- An empty `HARNESS_ARN` is fine in this mode.
+
 ## Run it without AWS
 
 `uv run pytest` needs no credentials. The harness is replayed from recorded streams in

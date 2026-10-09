@@ -27,12 +27,12 @@ def test_configuration_lists_models_and_default(client, bypass, monkeypatch):
     monkeypatch.setattr(dependencies.settings, "allowed_model_ids", ["model-a", "model-b"])
     response = client.get("/api/v1/configuration")
     assert response.status_code == 200
-    assert response.json() == {"allowedModelIds": ["model-a", "model-b"], "defaultModelId": "model-a"}
+    assert response.json() == {"allowedModelIds": ["model-a", "model-b"], "defaultModelId": "model-a", "replayMode": False}
 
 
 def test_configuration_exposes_nothing_but_display_values(client, bypass):
     # A closed response model: adding a field means editing it on purpose.
-    assert set(client.get("/api/v1/configuration").json()) == {"allowedModelIds", "defaultModelId"}
+    assert set(client.get("/api/v1/configuration").json()) == {"allowedModelIds", "defaultModelId", "replayMode"}
 
 
 def test_me_requires_a_user(client):

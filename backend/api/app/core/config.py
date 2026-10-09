@@ -34,6 +34,11 @@ class Settings(BaseSettings):
     harness_turn_timeout_seconds: int = 900
     max_tool_rounds: int = 8  # local-tool round trips per turn before giving up
 
+    # Demonstration mode: answer turns by playing recorded streams instead of calling the harness.
+    # Local only (see replay_enabled). The pause makes the recorded streaming visible.
+    harness_replay: bool = False
+    harness_replay_delay_seconds: float = 0.04
+
     # Local-only: serve authenticated endpoints as a stand-in user. Ignored in
     # a deployed task (see auth_bypass_enabled), so a stray value in a task
     # definition cannot open production.
@@ -63,6 +68,12 @@ class Settings(BaseSettings):
     @property
     def auth_bypass_enabled(self) -> bool:
         return self.local_auth_bypass and not self.running_on_ecs
+
+    @property
+    def replay_enabled(self) -> bool:
+        """Like the auth bypass, ignored in a deployed task: a stray value in a task
+        definition must not make production answer with recordings."""
+        return self.harness_replay and not self.running_on_ecs
 
 
 def load_settings() -> Settings:
