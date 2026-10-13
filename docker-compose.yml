@@ -1,0 +1,12 @@
+# Local run of the same image ECS runs. Needs backend/api/.env (python scripts/setup.py).
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file: backend/api/.env
+    environment:
+      AWS_PROFILE: ${AWS_PROFILE:-}
+    volumes:
+      # Local AWS credentials, read-only, for /ready and harness calls.
+      - ~/.aws:/home/app/.aws:ro
