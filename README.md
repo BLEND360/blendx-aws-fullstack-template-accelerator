@@ -32,8 +32,8 @@ docker-compose.yml    # run that image locally
 backend/api/          # FastAPI service — add sibling services here
 frontend/web/         # Vite + React SPA — add sibling UIs here
 harness/              # starter harness: model + managed memory
-infra/                # CDK app (Python)
-scripts/              # setup, one-time account bootstrap, harness deploy
+infra/                # CDK app (Python), see infra/README.md
+scripts/              # setup, account bootstrap, data and harness deploy
 .github/workflows/    # ci, deploy
 ```
 
@@ -70,14 +70,14 @@ idempotent.
 uv run --project infra python scripts/bootstrap.py
 
 # DynamoDB tables (sessions, items); needed only to run with DATA_STORE=dynamodb
-cd infra && npx --yes aws-cdk@2 deploy <name>-data --exclusively && cd ..
+uv run --project infra python scripts/deploy_data.py
 
 # starter harness (model + managed memory); skipped when harness.arn is set.
 # Needs: npm i -g @aws/agentcore, AWS CLI, jq, bash
 uv run --project infra python scripts/deploy_harness.py
 ```
 
-`<name>` is `project.name`. `deploy_harness.py` prints `harness_arn=...` and
+`deploy_harness.py` prints `harness_arn=...` and
 `harness_endpoint=...`; put them in `backend/api/.env` as `HARNESS_ARN` and
 `HARNESS_ENDPOINT` (or set `harness.arn` in `project.toml` to use an existing
 harness and skip the deploy). Use plain `python` for `setup.py` only: the other
@@ -87,6 +87,19 @@ scripts need boto3, which `uv run --project infra` provides.
 
 Set `DATA_STORE=dynamodb` and `HARNESS_ARN` in `backend/api/.env`, keep valid
 credentials in `~/.aws`, and restart. `/ready` should then report `ok`.
+
+### Troubleshooting
+
+| Symptom | Cause and fix |
+|---|---|
+| `ModuleNotFoundError: boto3` | You ran `bootstrap.py`, `deploy_data.py` or `deploy_harness.py` with plain `python`. Use `uv run --project infra python ...` |
+| "Your credentials are for account X, but project.toml says Y" | Wrong profile or `aws_account` in `project.toml`. Fix one and retry |
+| `Your session has expired ... Please reauthenticate using 'aws login'` (API logs, `/ready` degraded with `data_error`) | Run `aws login` (or `aws sso login`), then restart the API |
+| `OSError: [Errno 30] Read-only file system` in the container after `aws login` | `docker compose` mounts `~/.aws` read-only; credentials from `aws login` need it writable. Add a git-ignored `docker-compose.override.yml` that mounts `~/.aws` without `:ro` |
+| `/ready` is `degraded` with `harness_misconfigured` | `HARNESS_ARN` is empty. Deploy the harness or use `HARNESS_REPLAY=true` |
+| `/ready` is `degraded` with `data_error` on a table | Tables not deployed, or `DATA_STORE=dynamodb` with no credentials. Run `deploy_data.py` |
+| `project.toml is invalid` | The message names the field; names are 3-24 lowercase letters, digits and single hyphens |
+| `setup.py` says "already complete" | Both `.env` files exist; delete them to regenerate (`setup.py` removes itself after the first run) |
 
 ### Not built yet
 
