@@ -1,8 +1,8 @@
 """Every IAM role the template provisions. Add a role by adding a RoleSpec to the
 list role_specs() returns; RolesStack needs no change.
 
-Later tickets extend these roles in place, e.g. the tables grant the task role
-access (ST-05).
+Later tickets extend these roles in place (the task role already holds the
+table grants, see task_role below).
 """
 
 from aws_cdk import aws_iam as iam

@@ -1,4 +1,4 @@
-"""Session metadata held in this process, until ST-05 provides the DynamoDB store.
+"""Session metadata held in this process: the local default (see repositories/dynamo.py for the deployed store).
 
 Same contract as services.ports.SessionStore, so swapping it is a change of
 wiring, not of services. It is correct for one process only: with two tasks each

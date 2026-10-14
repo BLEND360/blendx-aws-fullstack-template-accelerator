@@ -87,6 +87,6 @@ It is textual: it does not see named colors (`red`) or values built at runtime.
 
 ## The items contract
 
-`/api/v1/items` is served by the backend (ST-05). `dev/items-standin.ts` is a test double of it
+`/api/v1/items` is served by the backend (in memory locally, DynamoDB when deployed). `dev/items-standin.ts` is a test double of it
 that the page tests use; if the real contract changes, update it and `src/features/items/api.ts`
 together (that file is the only place the SPA knows the contract).

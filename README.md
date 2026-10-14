@@ -39,21 +39,63 @@ scripts/              # setup, one-time account bootstrap, harness deploy
 
 ## Quick start
 
-```bash
-# 1. create the repo from this template, then edit project.toml (name, account, region)
-python scripts/setup.py       # validates project.toml, writes the .env files
-python scripts/bootstrap.py   # once per AWS account
-git push                      # full deploy, agent included
-```
+Prerequisites: [uv](https://docs.astral.sh/uv/), Node.js 22+, Docker (optional),
+and for the AWS steps the AWS CLI with credentials for the target account.
 
-Run the API and the web app locally:
+### 1. Run it locally (no AWS needed)
 
 ```bash
+# edit project.toml first (name, aws_account, aws_region, github_org, github_repo)
+python scripts/setup.py       # validates project.toml, writes the .env files; deletes itself
 docker compose up --build     # web http://localhost:5173, API http://localhost:8000/health
 ```
 
-Or without Docker, see [backend/api/README.md](backend/api/README.md) and
-[frontend/web/README.md](frontend/web/README.md).
+Locally the API keeps sessions and items in memory and skips sign-in
+(`LOCAL_AUTH_BYPASS=true`). `/ready` reports `degraded` until you have AWS
+credentials and a harness; that is expected. To chat without any harness, start
+the API with recorded answers (`HARNESS_REPLAY=true`, see
+[frontend/web/README.md](frontend/web/README.md#showing-it-without-aws)).
+
+Without Docker: [backend/api/README.md](backend/api/README.md) and
+[frontend/web/README.md](frontend/web/README.md). `docker compose` mounts
+`~/.aws`, so that folder must exist (`mkdir ~/.aws` if you have no credentials).
+
+### 2. Create the AWS resources
+
+Run these from the repo root with your own AWS credentials. Every step is
+idempotent.
+
+```bash
+# once per AWS account: CDK bootstrap, GitHub OIDC provider, roles stack
+uv run --project infra python scripts/bootstrap.py
+
+# DynamoDB tables (sessions, items); needed only to run with DATA_STORE=dynamodb
+cd infra && npx --yes aws-cdk@2 deploy <name>-data --exclusively && cd ..
+
+# starter harness (model + managed memory); skipped when harness.arn is set.
+# Needs: npm i -g @aws/agentcore, AWS CLI, jq, bash
+uv run --project infra python scripts/deploy_harness.py
+```
+
+`<name>` is `project.name`. `deploy_harness.py` prints `harness_arn=...` and
+`harness_endpoint=...`; put them in `backend/api/.env` as `HARNESS_ARN` and
+`HARNESS_ENDPOINT` (or set `harness.arn` in `project.toml` to use an existing
+harness and skip the deploy). Use plain `python` for `setup.py` only: the other
+scripts need boto3, which `uv run --project infra` provides.
+
+### 3. Point the local app at AWS (optional)
+
+Set `DATA_STORE=dynamodb` and `HARNESS_ARN` in `backend/api/.env`, keep valid
+credentials in `~/.aws`, and restart. `/ready` should then report `ok`.
+
+### Not built yet
+
+The deployed topology in the diagram above is the target, not the current state.
+Today the CDK app has the **roles** and **data** stacks only. Still to come:
+network, Cognito (auth stack, ST-08), ECS/CloudFront (app stack, ST-07) and the
+deploy workflow (ST-09), so `git push` runs CI but does not deploy yet.
+`bootstrap.py` prints two GitHub variables to set (`AWS_DEPLOY_ROLE_ARN`,
+`AWS_REGION`); they are used once the deploy workflow exists.
 
 ## Architecture
 

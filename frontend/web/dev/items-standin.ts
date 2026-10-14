@@ -1,4 +1,4 @@
-/** Test double for the items API (/api/v1/items, shipped by ST-05). The page tests route fetch
+/** Test double for the items API (/api/v1/items, served by the backend). The page tests route fetch
  * through it so they exercise the contract without a server; the dev server no longer uses it
  * and proxies to the real API.
  *
