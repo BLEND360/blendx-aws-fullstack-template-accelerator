@@ -1,0 +1,367 @@
+/* The chat's look. No brand value lives here (src/tokens/ owns those): every color comes from antd's
+ * CSS variables and the shared design tokens in ui/design.css, so the chat follows light/dark and any
+ * replacement theme. There is no card around the conversation: it sits on the page, the composer is
+ * what is anchored. */
+
+.chat-page {
+  min-height: calc(100dvh - 190px);
+}
+
+.chat-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.status-pill--demo::before {
+  background: var(--ant-color-warning);
+}
+
+.chat-canvas {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.chat-scroll {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-log {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding-block: var(--space-2) var(--space-5);
+}
+
+.chat-bottom {
+  scroll-margin-bottom: 150px; /* the sticky composer must not cover the newest text */
+}
+
+/* the composer stays in view at the bottom while the conversation grows above it */
+.chat-dock {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  padding: var(--space-4) 0 var(--space-2);
+  background: linear-gradient(to top, var(--color-bg) 78%, transparent);
+}
+
+.chat-disclaimer {
+  margin: var(--space-2) 0 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+/* ── messages ───────────────────────────────────────── */
+.chat-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  animation: chat-rise 200ms ease both;
+}
+
+.chat-row--user {
+  justify-content: flex-end;
+}
+
+.chat-avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--color-primary-soft);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
+  color: var(--color-primary);
+  font-size: 15px;
+}
+
+.chat-bubble {
+  max-width: min(72%, 680px);
+  line-height: 1.65;
+  font-size: 15px;
+}
+
+/* the assistant speaks on the page, not in a box: easier to read at length */
+.chat-row--assistant .chat-bubble {
+  max-width: min(100%, 720px);
+  padding-top: 3px;
+  color: var(--ant-color-text);
+}
+
+.chat-row--user .chat-bubble {
+  padding: 11px 16px;
+  border-radius: 18px 18px 6px 18px;
+  background: var(--color-primary);
+  color: var(--ant-color-text-light-solid);
+  box-shadow: var(--shadow-sm);
+}
+
+.chat-author {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+
+.chat-row--user .chat-author {
+  display: none; /* it is obvious whose message it is; kept in the DOM for screen readers */
+}
+
+.chat-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.chat-bubble--streaming .chat-text::after {
+  content: "";
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: var(--color-primary);
+  animation: chat-blink 1s steps(2, start) infinite;
+}
+
+/* ── thinking ───────────────────────────────────────── */
+.chat-typing {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-top: 5px;
+  font-size: 14px;
+  color: var(--color-text-secondary);
+}
+
+.chat-typing i {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-right: 3px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  animation: chat-bounce 1.2s ease-in-out infinite;
+}
+
+.chat-typing i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.chat-typing i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+/* ── welcome ────────────────────────────────────────── */
+.chat-welcome {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: var(--space-6) var(--space-2);
+  text-align: center;
+  animation: chat-rise 300ms ease both;
+}
+
+.chat-halo {
+  display: grid;
+  place-items: center;
+  width: 60px;
+  height: 60px;
+  margin-bottom: var(--space-3);
+  border-radius: 50%;
+  background: var(--color-primary-soft);
+  box-shadow: 0 0 0 8px color-mix(in srgb, var(--color-primary) 5%, transparent);
+  color: var(--color-primary);
+  font-size: 26px;
+}
+
+.chat-welcome h3 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--color-text-primary);
+}
+
+.chat-welcome p {
+  margin: 0;
+  max-width: 46ch;
+  color: var(--color-text-secondary);
+}
+
+.chat-suggestions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+  width: min(100%, 640px);
+  margin-top: var(--space-5);
+}
+
+.chat-suggestion {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+  color: var(--ant-color-text);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--ease), box-shadow var(--ease), transform var(--ease);
+}
+
+.chat-suggestion-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+
+.chat-suggestion:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--color-primary) 40%, var(--color-border));
+  box-shadow: var(--shadow-md);
+}
+
+.chat-suggestion:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* ── composer ───────────────────────────────────────── */
+.chat-composer {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+  border: 1px solid var(--ant-color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-md);
+  transition: border-color var(--ease), box-shadow var(--ease);
+}
+
+.chat-composer:focus-within {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 16%, transparent), var(--shadow-md);
+}
+
+.chat-composer--error,
+.chat-composer--error:focus-within {
+  border-color: var(--ant-color-error);
+}
+
+.chat-composer .ant-input {
+  padding: 8px 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  font-size: 15px;
+  resize: none;
+}
+
+.chat-composer .ant-btn {
+  flex: none;
+  width: 40px;
+  height: 40px;
+}
+
+/* ── tool card ──────────────────────────────────────── */
+.chat-tool.ant-card {
+  margin-left: 44px;
+  max-width: min(100%, 720px);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--ant-color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+  animation: chat-rise 200ms ease both;
+  transition: border-color 300ms ease;
+}
+
+.chat-tool--running.ant-card {
+  border-left-color: var(--color-primary);
+}
+
+.chat-tool--success.ant-card {
+  border-left-color: var(--ant-color-success);
+}
+
+.chat-tool--error.ant-card {
+  border-left-color: var(--ant-color-error);
+}
+
+.chat-tool pre {
+  font: 12.5px/1.5 var(--ant-font-family-code);
+}
+
+/* ── motion ─────────────────────────────────────────── */
+@keyframes chat-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes chat-bounce {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  30% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
+}
+
+@keyframes chat-blink {
+  to {
+    visibility: hidden;
+  }
+}
+
+@media (max-width: 720px) {
+  .chat-suggestions {
+    grid-template-columns: 1fr;
+  }
+
+  .chat-bubble {
+    max-width: 88%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-page *,
+  .chat-page *::before,
+  .chat-page *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

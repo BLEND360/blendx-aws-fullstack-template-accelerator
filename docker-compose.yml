@@ -1,0 +1,37 @@
+# Local run of the whole app: `docker compose up --build`, then http://localhost:5173.
+# Needs backend/api/.env (python scripts/setup.py).
+services:
+  api:
+    # The same image ECS runs.
+    build: .
+    ports:
+      - "8000:8000"
+      # The web container shares this container's network (see `web`), so its
+      # dev server is published here.
+      - "5173:5173"
+    env_file: backend/api/.env
+    environment:
+      - AWS_PROFILE  # passed through only when set on the host
+    volumes:
+      # Local AWS credentials, read-only, for /ready and harness calls.
+      - ~/.aws:/home/app/.aws:ro
+
+  # Vite dev server. It shares the api container's network so the dev proxy's
+  # http://localhost:8000 reaches the API: no API URL to configure anywhere.
+  web:
+    image: node:22
+    working_dir: /app
+    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
+    network_mode: "service:api"
+    depends_on:
+      - api
+    environment:
+      # Bind mounts from Windows/macOS do not deliver file events; poll instead.
+      - CHOKIDAR_USEPOLLING=true
+      # A flaky network (VPN, IPv6) made `npm ci` fail once with ENETUNREACH; retry instead of dying.
+      - NPM_CONFIG_FETCH_RETRIES=5
+      - NPM_CONFIG_FETCH_RETRY_MINTIMEOUT=2000
+    volumes:
+      - ./frontend/web:/app
+      # Keeps the host's node_modules (wrong OS binaries) out of the container.
+      - /app/node_modules
