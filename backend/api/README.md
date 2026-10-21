@@ -16,6 +16,9 @@ writes the first block from `project.toml`; the rest are optional.
 |---|---|---|
 | `PROJECT_NAME`, `AWS_REGION` | required | Names and region |
 | `SESSIONS_TABLE_NAME`, `ITEMS_TABLE_NAME` | required | DynamoDB tables of the data stack |
+| `COGNITO_USER_POOL_ID`, `COGNITO_APP_CLIENT_ID` | empty | Cognito user pool and app client (`scripts/deploy_auth.py` prints them). Set both or neither |
+| `AUTH_JWT_SECRET` | empty | Signs the session credential; 32+ characters, required once Cognito is configured (`setup.py` generates one) |
+| `AUTH_TOKEN_TTL_SECONDS` | `3600` | Life of the session credential; there is no refresh |
 | `HARNESS_ARN` | empty | Harness to invoke; empty makes `/ready` report `harness_misconfigured` |
 | `HARNESS_ENDPOINT` | required | Harness alias (`PROD`, `STAGING`) |
 | `ALLOWED_MODEL_IDS` | required | JSON list, e.g. `["model-a"]` |

@@ -77,3 +77,27 @@ def test_environments_parsed(tmp_path):
 def test_invalid_values_rejected(tmp_path, old, new):
     with pytest.raises(ValueError):
         config.load(write(tmp_path, VALID.replace(old, new)))
+
+
+def test_auth_names_and_default_callbacks(tmp_path):
+    c = config.load(write(tmp_path, VALID))
+    assert (c.user_pool, c.app_client) == ("acme-portal-users", "acme-portal-web")
+    assert c.cognito_domain_prefix == "acme-portal-111122223333"
+    assert c.auth_callback_urls == ()
+
+
+def test_extra_callback_urls_are_read(tmp_path):
+    text = VALID + '\n[auth]\ncallback_urls = ["https://app.acme.test/", "http://localhost:3000/"]\n'
+    assert config.load(write(tmp_path, text)).auth_callback_urls == ("https://app.acme.test/", "http://localhost:3000/")
+
+
+@pytest.mark.parametrize("url", ["http://app.acme.test/", "https://*.acme.test/", "https://app.acme.test/#x", "ftp://x"])
+def test_invalid_callback_url_is_rejected_naming_it(tmp_path, url):
+    with pytest.raises(ValueError, match="callback_urls"):
+        config.load(write(tmp_path, VALID + f'\n[auth]\ncallback_urls = ["{url}"]\n'))
+
+
+@pytest.mark.parametrize("name", ["my-aws-app", "cognito-demo", "amazon-shop"])
+def test_name_cognito_cannot_put_in_a_domain_is_rejected(tmp_path, name):
+    with pytest.raises(ValueError, match="Cognito"):
+        config.load(write(tmp_path, VALID.replace("acme-portal", name)))

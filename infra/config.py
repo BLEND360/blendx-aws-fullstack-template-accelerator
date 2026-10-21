@@ -19,6 +19,13 @@ _REGION = re.compile(r"^[a-z]{2}(-[a-z]+)+-\d$")
 # No wildcards: these go into the OIDC trust policy.
 _GITHUB = re.compile(r"^[A-Za-z0-9._-]+$")
 
+# Cognito accepts https, or http only for localhost; no wildcards, no fragments.
+_CALLBACK_URL = re.compile(r"^(https://[^\s*#]+|http://localhost(:\d+)?(/[^\s*#]*)?)$")
+# Cognito rejects these words in a hosted-UI domain prefix, and ours starts with the project name.
+_COGNITO_RESERVED = ("aws", "amazon", "cognito")
+# The SPA's dev server; always an allowed return address for sign-in and sign-out.
+LOCAL_CALLBACK_URL = "http://localhost:5173/"
+
 # Platform convention (README, Architecture): the harness lives at
 # harness/app/assistant/ and its CloudFormation outputs are Harness<Pascal>*.
 HARNESS_NAME = "assistant"
@@ -43,6 +50,7 @@ class Config:
     harness_endpoint: str
     harness_model_id: str
     model_ids: tuple[str, ...]
+    auth_callback_urls: tuple[str, ...]
     environments: dict[str, Sizing]
 
     # Stacks
@@ -64,6 +72,20 @@ class Config:
 
     def role_arn(self, role_name: str) -> str:
         return f"arn:aws:iam::{self.aws_account}:role/{role_name}"
+
+    # Sign-in (Cognito)
+    @property
+    def user_pool(self) -> str:
+        return f"{self.name}-users"
+
+    @property
+    def app_client(self) -> str:
+        return f"{self.name}-web"
+
+    @property
+    def cognito_domain_prefix(self) -> str:
+        """Unique per region, so the account disambiguates, like the web bucket."""
+        return f"{self.name}-{self.aws_account}"
 
     # Compute
     @property
@@ -143,6 +165,7 @@ def load(path: Path = PROJECT_TOML) -> Config:
         harness_endpoint=harness["endpoint"],
         harness_model_id=harness["model_id"],
         model_ids=tuple(harness["model_ids"]),
+        auth_callback_urls=tuple(raw.get("auth", {}).get("callback_urls", [])),
         environments={env: Sizing(**s) for env, s in raw["environments"].items()},
     )
 
@@ -155,6 +178,11 @@ def load(path: Path = PROJECT_TOML) -> Config:
         errors.append(f"project.aws_region {config.aws_region!r}: not an AWS region")
     if not _GITHUB.match(config.github_org) or not _GITHUB.match(config.github_repo):
         errors.append("project.github_org / github_repo: letters, digits, '.', '_', '-' only")
+    if any(word in config.name for word in _COGNITO_RESERVED):
+        errors.append(f"project.name {config.name!r}: must not contain 'aws', 'amazon' or 'cognito' (Cognito domain rule)")
+    for url in config.auth_callback_urls:
+        if not _CALLBACK_URL.match(url):
+            errors.append(f"auth.callback_urls {url!r}: use https://..., or http://localhost, with no '*' or '#'")
     if not config.model_ids:
         errors.append("harness.model_ids: must list at least one model")
     if config.deploys_starter_harness and config.harness_model_id not in config.model_ids:

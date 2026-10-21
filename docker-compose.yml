@@ -28,6 +28,9 @@ services:
     environment:
       # Bind mounts from Windows/macOS do not deliver file events; poll instead.
       - CHOKIDAR_USEPOLLING=true
+      # A flaky network (VPN, IPv6) made `npm ci` fail once with ENETUNREACH; retry instead of dying.
+      - NPM_CONFIG_FETCH_RETRIES=5
+      - NPM_CONFIG_FETCH_RETRY_MINTIMEOUT=2000
     volumes:
       - ./frontend/web:/app
       # Keeps the host's node_modules (wrong OS binaries) out of the container.

@@ -9,7 +9,7 @@ project.toml; deployed, the app stack sets them on the ECS task.
 import os
 from typing import Literal
 
-from pydantic import ValidationError, field_validator
+from pydantic import Field, ValidationError, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -52,7 +52,29 @@ class Settings(BaseSettings):
     local_auth_user_email: str = "local-dev@example.com"
     local_auth_user_name: str = "Local Dev"
 
+    # Sign-in. Empty until the auth stack is deployed (scripts/deploy_auth.py prints the values);
+    # with both empty, only the local bypass admits anyone. The secret signs the app's own session
+    # credential and is required, at 32+ characters, as soon as Cognito is configured.
+    cognito_user_pool_id: str = ""
+    cognito_app_client_id: str = ""
+    auth_jwt_secret: str = Field(default="", validate_default=True)
+    auth_token_ttl_seconds: int = 3600
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    @field_validator("cognito_app_client_id")
+    @classmethod
+    def _pool_and_client_together(cls, value: str, info: ValidationInfo) -> str:
+        if bool(value) != bool(info.data.get("cognito_user_pool_id")):
+            raise ValueError("must be set together with COGNITO_USER_POOL_ID")
+        return value
+
+    @field_validator("auth_jwt_secret")
+    @classmethod
+    def _secret_strong_when_cognito_is_on(cls, value: str, info: ValidationInfo) -> str:
+        if info.data.get("cognito_user_pool_id") and info.data.get("cognito_app_client_id") and len(value) < 32:
+            raise ValueError("must be at least 32 characters when Cognito is configured")
+        return value
 
     @field_validator("allowed_model_ids")
     @classmethod
@@ -60,6 +82,10 @@ class Settings(BaseSettings):
         if not [m for m in value if m.strip()]:
             raise ValueError("must list at least one model id")
         return value
+
+    @property
+    def cognito_configured(self) -> bool:
+        return bool(self.cognito_user_pool_id and self.cognito_app_client_id)
 
     @property
     def running_on_ecs(self) -> bool:

@@ -197,3 +197,23 @@ TURN_EVENT_NAMES: Final[dict[type, str]] = {
     Done: "done",
     ErrorEvent: "error",
 }
+
+
+@dataclass(frozen=True)
+class Identity:
+    """Who the identity provider says the caller is, once its token is verified."""
+
+    subject: str
+    email: str
+    name: str
+    groups: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class SessionClaims:
+    """What the app's own session credential carries. Roles are the provider's groups."""
+
+    subject: str
+    email: str
+    name: str
+    roles: tuple[str, ...]

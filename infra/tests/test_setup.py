@@ -1,5 +1,6 @@
 """Runs scripts/setup.py against a throwaway copy of the repo."""
 
+import re
 import shutil
 import subprocess
 import sys
@@ -35,6 +36,9 @@ def test_writes_env_files_and_removes_itself(clone):
     backend = (clone / "backend/api/.env").read_text()
     assert f"SESSIONS_TABLE_NAME={config.load().sessions_table}" in backend
     assert "CORS" not in backend
+    assert "COGNITO_USER_POOL_ID=" in backend.splitlines() and "COGNITO_APP_CLIENT_ID=" in backend.splitlines()
+    secret = next(l for l in backend.splitlines() if l.startswith("AUTH_JWT_SECRET=")).split("=", 1)[1]
+    assert len(secret) >= 32
     assert (clone / "frontend/web/.env").read_text().startswith("#")
     assert (clone / "harness/app/assistant/harness.json").exists()
     assert not (clone / "scripts/setup.py").exists()
@@ -54,7 +58,7 @@ def test_second_run_reports_complete(clone):
 
 def test_invalid_project_toml_fails_and_keeps_script(clone):
     toml = clone / "project.toml"
-    toml.write_text(toml.read_text().replace('"123456789012"', '"nope"'))
+    toml.write_text(re.sub(r'aws_account\s*=\s*"\d+"', 'aws_account = "nope"', toml.read_text()))
 
     result = run(clone)
 

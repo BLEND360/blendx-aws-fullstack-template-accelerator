@@ -9,6 +9,8 @@ const LOCAL_API = "http://localhost:8000";
 export default defineConfig({
   plugins: [react()],
   server: {
+    // Cognito only returns to http://localhost:5173/; a silent hop to another port breaks sign-in.
+    strictPort: true,
     proxy: {
       "^/(api|auth)(/|$)": {
         target: LOCAL_API,

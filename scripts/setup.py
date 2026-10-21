@@ -9,6 +9,7 @@ that setup is already complete and changes nothing.
 """
 
 import json
+import secrets
 import sys
 from pathlib import Path
 
@@ -37,6 +38,12 @@ ALLOWED_MODEL_IDS={json.dumps(list(c.model_ids))}
 # Cognito does not exist until the auth stack is deployed, so local runs skip
 # authentication. Ignored when running as a deployed ECS task.
 LOCAL_AUTH_BYPASS=true
+
+# Sign-in. Fill the two ids from `scripts/deploy_auth.py`; the secret signs the app's
+# session credential (32+ characters, required once Cognito is configured).
+COGNITO_USER_POOL_ID=
+COGNITO_APP_CLIENT_ID=
+AUTH_JWT_SECRET={secrets.token_urlsafe(48)}
 """
 
 

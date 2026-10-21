@@ -46,5 +46,5 @@ def test_me_returns_the_local_bypass_user(client, bypass):
         "id": dependencies.settings.local_auth_user_id,
         "name": dependencies.settings.local_auth_user_name,
         "email": dependencies.settings.local_auth_user_email,
-        "roles": [],
+        "roles": ["admin"],
     }

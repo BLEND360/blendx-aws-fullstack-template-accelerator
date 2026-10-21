@@ -1,5 +1,6 @@
 """Request dependencies shared by routers."""
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import cache
 
@@ -8,7 +9,9 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.clients.aws import table
 from app.core.config import settings
-from app.core.errors import InvalidTokenError
+from app.clients.cognito import CognitoVerifier
+from app.clients.session_tokens import SessionTokenCodec
+from app.core.errors import AUTH, ForbiddenError, InvalidTokenError
 from app.core.logging import get_logger
 from app.harness.client import AgentCoreHarness, BotoInvoker, RawInvoker
 from app.harness.fake import FakeMemory
@@ -17,6 +20,7 @@ from app.harness.replay import ReplayHarness
 from app.repositories.dynamo import DynamoItemStore, DynamoSessionStore
 from app.repositories.in_memory_items import InMemoryItemStore
 from app.repositories.in_memory_sessions import InMemorySessionStore
+from app.services.auth import AuthService
 from app.services.history import HistoryService
 from app.services.items import ItemService
 from app.services.ports import HarnessPort, ItemStore, MemoryPort, SessionStore, ToolPort
@@ -33,19 +37,50 @@ class User:
     id: str
     email: str
     name: str
+    roles: tuple[str, ...] = ()
 
 
-def current_user(credentials: HTTPAuthorizationCredentials | None = Depends(_bearer)) -> User:
+@cache
+def auth_service() -> AuthService:
+    # Without Cognito there is no secret to sign with, so there are no adapters at all
+    # rather than a codec holding an empty key.
+    if not settings.cognito_configured:
+        return AuthService(None, None)
+    return AuthService(
+        CognitoVerifier(settings.aws_region, settings.cognito_user_pool_id, settings.cognito_app_client_id),
+        SessionTokenCodec(settings.auth_jwt_secret, settings.project_name, settings.auth_token_ttl_seconds),
+    )
+
+
+def current_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
+    service: AuthService = Depends(auth_service),
+) -> User:
     """The caller. Every authenticated route depends on this.
 
-    Token validation (Cognito id token in, app JWT out) arrives with ST-08;
-    until then only the local bypass admits anyone. The bypass is ignored in a
-    deployed task, whatever LOCAL_AUTH_BYPASS says.
+    The bearer is the app's own session credential, issued by /auth/login. The local
+    bypass is ignored in a deployed task, whatever LOCAL_AUTH_BYPASS says.
     """
     if settings.auth_bypass_enabled:
         logger.warning("local_auth_bypass_used", user_id=settings.local_auth_user_id)
-        return User(settings.local_auth_user_id, settings.local_auth_user_email, settings.local_auth_user_name)
-    raise InvalidTokenError(detail="no token validation configured" if credentials else "missing bearer token")
+        return User(
+            settings.local_auth_user_id, settings.local_auth_user_email, settings.local_auth_user_name, ("admin",)
+        )
+    if credentials is None:
+        raise InvalidTokenError(detail="missing bearer token")
+    claims = service.authenticate(credentials.credentials)
+    return User(claims.subject, claims.email, claims.name, claims.roles)
+
+
+def require_role(role: str) -> Callable[[User], User]:
+    """A route dependency: the caller must hold `role`. 401 without a session, 403 without the role."""
+
+    def check(user: User = Depends(current_user)) -> User:
+        if role not in user.roles:
+            raise ForbiddenError("You do not have access to this.", dependency=AUTH, detail=f"missing role {role}")
+        return user
+
+    return check
 
 
 # --- Wiring -----------------------------------------------------------------------

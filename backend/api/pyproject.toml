@@ -10,6 +10,7 @@ dependencies = [
     # [crt]: botocore's login/SSO credential provider needs it; without it a
     # local profile that authenticates that way raises MissingDependencyException.
     "boto3[crt]>=1.40",
+    "pyjwt[crypto]>=2.8",
 ]
 
 [dependency-groups]

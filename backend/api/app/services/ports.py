@@ -11,13 +11,29 @@ from typing import Protocol
 from app.core.models import (
     HarnessEvent,
     HarnessRequest,
+    Identity,
     ItemRecord,
     MemoryEvent,
     MemoryRef,
+    SessionClaims,
     SessionRecord,
     ToolOutcome,
     ToolSpec,
 )
+
+
+class IdentityVerifier(Protocol):
+    """Verifies the identity provider's token. Raises InvalidTokenError, or UnavailableError if it cannot be checked."""
+
+    def verify(self, id_token: str) -> Identity: ...
+
+
+class SessionTokens(Protocol):
+    """Issues and reads the app's session credential. `decode` raises InvalidTokenError."""
+
+    def issue(self, claims: SessionClaims) -> str: ...
+
+    def decode(self, token: str) -> SessionClaims: ...
 
 
 class DependencyProbe(Protocol):

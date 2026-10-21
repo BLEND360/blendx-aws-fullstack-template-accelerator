@@ -72,6 +72,9 @@ uv run --project infra python scripts/bootstrap.py
 # DynamoDB tables (sessions, items); needed only to run with DATA_STORE=dynamodb
 uv run --project infra python scripts/deploy_data.py
 
+# sign-in: Cognito user pool, wired into the .env files (see "Sign-in" below)
+uv run --project infra python scripts/deploy_auth.py
+
 # starter harness (model + managed memory); skipped when harness.arn is set.
 # Needs: npm i -g @aws/agentcore, AWS CLI, jq, bash
 uv run --project infra python scripts/deploy_harness.py
@@ -83,6 +86,24 @@ uv run --project infra python scripts/deploy_harness.py
 harness and skip the deploy). Use plain `python` for `setup.py` only: the other
 scripts need boto3, which `uv run --project infra` provides.
 
+### Sign-in
+
+Locally there is no sign-in (`LOCAL_AUTH_BYPASS=true`, you are a stand-in admin). To sign in for real:
+
+```bash
+uv run --project infra python scripts/deploy_auth.py                      # Cognito + writes both .env files
+uv run --project infra python scripts/create_user.py you@example.com      # prints the password; --group user for a non-admin
+```
+
+`deploy_auth.py` writes `COGNITO_*` and `VITE_COGNITO_*` into the `.env` files, makes sure `AUTH_JWT_SECRET`
+exists and sets `LOCAL_AUTH_BYPASS=false` (set it back to `true` to skip sign-in locally). Restart the API and
+the web app, open http://localhost:5173 and sign in. Nothing is copied by hand.
+
+Groups become the API's roles (`admin`, `user`); nobody can self sign-up, so users come from `create_user.py`.
+The API trades Cognito's id token for its own 1-hour session credential (`POST /auth/login`); there is no silent
+refresh. To sign in from a deployed URL, add it (https, trailing slash) to `[auth] callback_urls` in
+`project.toml` and run `deploy_auth.py` again.
+
 ### 3. Point the local app at AWS (optional)
 
 Set `DATA_STORE=dynamodb` and `HARNESS_ARN` in `backend/api/.env`, keep valid
@@ -92,20 +113,21 @@ credentials in `~/.aws`, and restart. `/ready` should then report `ok`.
 
 | Symptom | Cause and fix |
 |---|---|
-| `ModuleNotFoundError: boto3` | You ran `bootstrap.py`, `deploy_data.py` or `deploy_harness.py` with plain `python`. Use `uv run --project infra python ...` |
+| `ModuleNotFoundError: boto3` | You ran `bootstrap.py`, `deploy_data.py`, `deploy_auth.py`, `create_user.py` or `deploy_harness.py` with plain `python`. Use `uv run --project infra python ...` |
 | "Your credentials are for account X, but project.toml says Y" | Wrong profile or `aws_account` in `project.toml`. Fix one and retry |
 | `Your session has expired ... Please reauthenticate using 'aws login'` (API logs, `/ready` degraded with `data_error`) | Run `aws login` (or `aws sso login`), then restart the API |
 | `OSError: [Errno 30] Read-only file system` in the container after `aws login` | `docker compose` mounts `~/.aws` read-only; credentials from `aws login` need it writable. Add a git-ignored `docker-compose.override.yml` that mounts `~/.aws` without `:ro` |
 | `/ready` is `degraded` with `harness_misconfigured` | `HARNESS_ARN` is empty. Deploy the harness or use `HARNESS_REPLAY=true` |
 | `/ready` is `degraded` with `data_error` on a table | Tables not deployed, or `DATA_STORE=dynamodb` with no credentials. Run `deploy_data.py` |
+| API refuses to start naming `AUTH_JWT_SECRET` or `COGNITO_APP_CLIENT_ID` | Cognito is configured but the secret is shorter than 32 characters, or only one of pool and client is set |
 | `project.toml is invalid` | The message names the field; names are 3-24 lowercase letters, digits and single hyphens |
 | `setup.py` says "already complete" | Both `.env` files exist; delete them to regenerate (`setup.py` removes itself after the first run) |
 
 ### Not built yet
 
 The deployed topology in the diagram above is the target, not the current state.
-Today the CDK app has the **roles** and **data** stacks only. Still to come:
-network, Cognito (auth stack, ST-08), ECS/CloudFront (app stack, ST-07) and the
+Today the CDK app has the **roles**, **auth** (Cognito) and **data** stacks only. Still to come:
+network, ECS/CloudFront (app stack, ST-07) and the
 deploy workflow (ST-09), so `git push` runs CI but does not deploy yet.
 `bootstrap.py` prints two GitHub variables to set (`AWS_DEPLOY_ROLE_ARN`,
 `AWS_REGION`); they are used once the deploy workflow exists.
