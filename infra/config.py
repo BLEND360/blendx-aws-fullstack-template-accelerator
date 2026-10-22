@@ -32,11 +32,23 @@ HARNESS_NAME = "assistant"
 AGENTCORE_TARGET = "default"
 
 
+# Fargate's supported CPU/memory pairs (MiB). The network spans two zones, so at most two NAT gateways.
+_FARGATE_MEMORY = {
+    256: (512, 1024, 2048),
+    512: tuple(range(1024, 4097, 1024)),
+    1024: tuple(range(2048, 8193, 1024)),
+    2048: tuple(range(4096, 16385, 1024)),
+    4096: tuple(range(8192, 30721, 1024)),
+}
+MAX_NAT_GATEWAYS = 2
+
+
 @dataclass(frozen=True)
 class Sizing:
     desired_count: int
     cpu: int
     memory: int
+    nat_gateways: int = 1  # cost lever: one NAT is a single point of failure for egress, two is one per zone
 
 
 @dataclass(frozen=True)
@@ -70,6 +82,15 @@ class Config:
     def app_stack(self) -> str:
         return f"{self.name}-app"
 
+    @property
+    def network_stack(self) -> str:
+        return f"{self.name}-network"
+
+    def sizing(self, env: str) -> Sizing:
+        if env not in self.environments:
+            raise ValueError(f"environment {env!r} is not defined in project.toml; valid: {', '.join(self.environments)}")
+        return self.environments[env]
+
     def role_arn(self, role_name: str) -> str:
         return f"arn:aws:iam::{self.aws_account}:role/{role_name}"
 
@@ -99,6 +120,18 @@ class Config:
     @property
     def service(self) -> str:
         return f"{self.name}-api"
+
+    @property
+    def load_balancer(self) -> str:
+        return f"{self.name}-alb"
+
+    @property
+    def log_group(self) -> str:
+        return f"/{self.name}/api"
+
+    @property
+    def auth_jwt_secret_name(self) -> str:
+        return f"{self.name}/auth-jwt-secret"
 
     # Data
     @property
@@ -195,6 +228,11 @@ def load(path: Path = PROJECT_TOML) -> Config:
         errors.append("harness.endpoint: required")
     if not config.environments:
         errors.append("environments: define at least one")
+    for env, size in config.environments.items():
+        if size.memory not in _FARGATE_MEMORY.get(size.cpu, ()):
+            errors.append(f"environments.{env}: cpu={size.cpu}, memory={size.memory} is not a Fargate combination")
+        if not 1 <= size.nat_gateways <= MAX_NAT_GATEWAYS:
+            errors.append(f"environments.{env}.nat_gateways {size.nat_gateways}: must be 1 to {MAX_NAT_GATEWAYS}")
     if errors:
         raise ValueError(f"{path}:\n  " + "\n  ".join(errors))
     return config

@@ -96,7 +96,7 @@ Set `harness.arn` and `harness.endpoint` in `project.toml` (and list the models 
 and `HARNESS_ENDPOINT`. No code changes. The task role needs `InvokeHarness` on the harness,
 `GetHarness` on it, and `ListEvents`/`DeleteEvent` on its memory; the statements are in
 [`infra/definitions/roles.py`](../../infra/definitions/roles.py) (`invoke_harness`, `get_harness`,
-`harness_memory`) and the app stack attaches them (ST-07).
+`harness_memory`, scoped to the harness and its memory) and the app stack attaches them (ST-07).
 
 Still open (the starter harness has no tools of its own, so it could not be tested): when a session
 has local tools the call sends a `tools` list, and AgentCore documents that list as overriding the

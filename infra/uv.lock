@@ -189,7 +189,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aws-cdk-lib", specifier = ">=2.160" },
+    { name = "aws-cdk-lib", specifier = ">=2.271" },
     { name = "boto3", extras = ["crt"], specifier = ">=1.40" },
     { name = "constructs", specifier = ">=10.3" },
 ]

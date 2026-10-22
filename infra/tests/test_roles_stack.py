@@ -143,12 +143,14 @@ def test_get_harness_statement_is_scoped_to_the_harness():
     assert statement["Resource"] == "arn:aws:bedrock-agentcore:r:1:harness/h"
 
 
-def test_history_statement_reads_and_deletes_events_in_this_accounts_memories_only():
+def test_history_statement_reads_and_deletes_events_in_the_given_memory_only():
     from definitions.roles import harness_memory
 
-    statement = harness_memory(C).to_statement_json()
+    memory = f"arn:aws:bedrock-agentcore:{C.aws_region}:{ACCOUNT}:memory/assistant_mem-XyZ789"
+    statement = harness_memory(memory).to_statement_json()
     assert set(statement["Action"]) == {"bedrock-agentcore:ListEvents", "bedrock-agentcore:DeleteEvent"}
-    assert statement["Resource"] == f"arn:aws:bedrock-agentcore:{C.aws_region}:{ACCOUNT}:memory/*"
+    assert statement["Resource"] == memory
+    assert "*" not in statement["Resource"]
 
 
 def test_task_role_grants(template):

@@ -27,12 +27,15 @@ endpoint  = "PROD"   # which alias of that harness to invoke
 model_id  = "us.anthropic.claude-sonnet-4-5-20250929-v1:0"    # starter harness
 model_ids = ["us.anthropic.claude-sonnet-4-5-20250929-v1:0"]  # backend allowlist
 
+# Per environment: tasks, Fargate cpu/memory, and NAT gateways (1 or 2: one per zone).
 [environments.dev]
 desired_count = 1
 cpu           = 256
 memory        = 512
+nat_gateways  = 1
 
 [environments.prod]
 desired_count = 2
 cpu           = 512
 memory        = 1024
+nat_gateways  = 2

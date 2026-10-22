@@ -2,7 +2,8 @@
 list role_specs() returns; RolesStack needs no change.
 
 Later tickets extend these roles in place (the task role already holds the
-table grants, see task_role below).
+table grants, see task_role below). The harness grants (invoke_harness, get_harness,
+harness_memory) take resolved ARNs, so the app stack attaches them.
 """
 
 from aws_cdk import aws_iam as iam
@@ -101,17 +102,16 @@ def get_harness(harness_arn: str) -> iam.PolicyStatement:
     )
 
 
-def harness_memory(c: Config) -> iam.PolicyStatement:
+def harness_memory(memory_arn: str) -> iam.PolicyStatement:
     """History and session deletion read and delete events in the harness's memory.
 
-    The memory's id is assigned when the harness deploys, so until ST-07 can pass
-    its ARN this is every memory of the account and region: wider than it should
-    be, and narrowed by whoever attaches it.
+    Scoped to that one memory: the app stack (ST-07) receives its ARN, resolved from the
+    harness by scripts/deploy_app.py, and attaches this, like invoke_harness.
     """
     return iam.PolicyStatement(
         sid="HarnessMemoryEvents",
         actions=["bedrock-agentcore:ListEvents", "bedrock-agentcore:DeleteEvent"],
-        resources=[f"arn:aws:bedrock-agentcore:{c.aws_region}:{c.aws_account}:memory/*"],
+        resources=[memory_arn],
     )
 
 
