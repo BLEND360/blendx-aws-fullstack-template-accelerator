@@ -2,6 +2,7 @@ from aws_cdk import Stack
 from aws_cdk import aws_ec2 as ec2
 from constructs import Construct
 
+from config import ExistingNetwork
 from specs.network import NetworkSpec
 
 
@@ -35,3 +36,17 @@ class NetworkStack(Stack):
                     "DynamoDb": ec2.GatewayVpcEndpointOptions(service=ec2.GatewayVpcEndpointAwsService.DYNAMODB),
                 },
             )
+
+
+def import_vpc(scope: Construct, network: ExistingNetwork) -> ec2.IVpc:
+    """A VPC that already exists, as an input of the app stack. Creates nothing and changes nothing in it.
+
+    The zones come from project.toml, not from a lookup, so synthesizing needs no credentials.
+    """
+    return ec2.Vpc.from_vpc_attributes(
+        scope,
+        "ExistingVpc",
+        vpc_id=network.vpc_id,
+        availability_zones=list(network.private_subnets),
+        private_subnet_ids=list(network.private_subnets.values()),
+    )

@@ -15,6 +15,8 @@ PROJECT_TOML = Path(__file__).resolve().parent.parent / "project.toml"
 # bucket) stays under 63 chars.
 _NAME = re.compile(r"^[a-z](?!.*--)[a-z0-9-]{1,22}[a-z0-9]$")
 _ACCOUNT = re.compile(r"^\d{12}$")
+_VPC_ID = re.compile(r"^vpc-[0-9a-f]+$")
+_SUBNET_ID = re.compile(r"^subnet-[0-9a-f]+$")
 _REGION = re.compile(r"^[a-z]{2}(-[a-z]+)+-\d$")
 # No wildcards: these go into the OIDC trust policy.
 _GITHUB = re.compile(r"^[A-Za-z0-9._-]+$")
@@ -52,6 +54,14 @@ class Sizing:
 
 
 @dataclass(frozen=True)
+class ExistingNetwork:
+    """A VPC the template does not create: the app is deployed into these subnets, which stay untouched."""
+
+    vpc_id: str
+    private_subnets: dict[str, str]  # zone -> subnet id; the zones come from here, so synth needs no AWS lookup
+
+
+@dataclass(frozen=True)
 class Config:
     name: str
     aws_account: str
@@ -64,6 +74,11 @@ class Config:
     model_ids: tuple[str, ...]
     auth_callback_urls: tuple[str, ...]
     environments: dict[str, Sizing]
+    existing_network: ExistingNetwork | None = None
+
+    @property
+    def uses_existing_network(self) -> bool:
+        return self.existing_network is not None
 
     # Stacks
     @property
@@ -183,10 +198,26 @@ class Config:
         return not self.harness_arn
 
 
+def _network_errors(network: ExistingNetwork, region: str) -> list[str]:
+    errors = []
+    if not _VPC_ID.match(network.vpc_id):
+        errors.append(f"network.vpc_id {network.vpc_id!r}: expected vpc-<hex id>")
+    zones = network.private_subnets
+    if len(zones) < 2:
+        errors.append("network.private_subnets: list a private subnet in at least two zones")
+    for zone, subnet in zones.items():
+        if not re.fullmatch(rf"{re.escape(region)}[a-z]", zone):
+            errors.append(f"network.private_subnets {zone!r}: not a zone of {region}")
+        if not _SUBNET_ID.match(str(subnet)):
+            errors.append(f"network.private_subnets {zone!r}: {subnet!r} is not a subnet id (subnet-<hex id>)")
+    return errors
+
+
 def load(path: Path = PROJECT_TOML) -> Config:
     with open(path, "rb") as f:
         raw = tomllib.load(f)
     project, harness = raw["project"], raw["harness"]
+    network = raw.get("network", {})
 
     config = Config(
         name=project["name"],
@@ -200,6 +231,7 @@ def load(path: Path = PROJECT_TOML) -> Config:
         model_ids=tuple(harness["model_ids"]),
         auth_callback_urls=tuple(raw.get("auth", {}).get("callback_urls", [])),
         environments={env: Sizing(**s) for env, s in raw["environments"].items()},
+        existing_network=ExistingNetwork(network.get("vpc_id", ""), dict(network.get("private_subnets", {}))) if network else None,
     )
 
     errors = []
@@ -233,6 +265,8 @@ def load(path: Path = PROJECT_TOML) -> Config:
             errors.append(f"environments.{env}: cpu={size.cpu}, memory={size.memory} is not a Fargate combination")
         if not 1 <= size.nat_gateways <= MAX_NAT_GATEWAYS:
             errors.append(f"environments.{env}.nat_gateways {size.nat_gateways}: must be 1 to {MAX_NAT_GATEWAYS}")
+    if config.existing_network:
+        errors += _network_errors(config.existing_network, config.aws_region)
     if errors:
         raise ValueError(f"{path}:\n  " + "\n  ".join(errors))
     return config

@@ -13,6 +13,15 @@ github_repo = "my-app"          # repository the deploy role trusts (GitHub OIDC
 # aws_account = "175562788224"
 # github_repo = "blendx-aws-fullstack-template-accelerator"
 
+# Leave this section out and the template creates the VPC (`<name>-network`). To deploy into a VPC
+# that already exists instead, uncomment and fill it: its private subnets need a route out to the
+# Internet through a NAT (not an internet gateway), and the VPC needs an internet gateway attached
+# (CloudFront requires it for a private origin). The deploy script checks all of that. Nothing in the
+# VPC is created or modified.
+# [network]
+# vpc_id          = "vpc-0123456789abcdef0"
+# private_subnets = { us-east-1a = "subnet-0123456789abcdef0", us-east-1b = "subnet-0fedcba9876543210" }
+
 [auth]
 # Extra sign-in / sign-out return addresses besides http://localhost:5173/ (always allowed).
 # Add the deployed app's public URL, with a trailing slash, once it exists.
