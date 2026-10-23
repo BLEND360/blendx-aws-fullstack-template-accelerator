@@ -11,7 +11,9 @@ from aws_cdk import aws_s3 as s3
 from aws_cdk import aws_secretsmanager as secretsmanager
 from constructs import Construct
 
+from config import ExistingNetwork
 from specs.app import AppSpec
+from stacks.network import import_vpc
 
 # What the service runs while no image has been pushed: never pulled, because it has no tasks then.
 PLACEHOLDER_TAG = "pending"
@@ -32,12 +34,17 @@ SPA_REWRITE = """function handler(event) {
 class AppStack(Stack):
     """Provisions every AppSpec it is given. Apps are added in definitions/app.py, not here.
 
-    The roles are not created here: they exist already (roles stack) and are imported by name, which
+    `vpc` is the VPC the network stack created, or the description of an existing one, imported without
+    touching it. The roles are not created here: they exist already (roles stack) and are imported by name, which
     is also how the harness grants reach the task role.
     """
 
-    def __init__(self, scope: Construct, construct_id: str, specs: list[AppSpec], vpc: ec2.IVpc, **kwargs) -> None:
+    def __init__(
+        self, scope: Construct, construct_id: str, specs: list[AppSpec], vpc: ec2.IVpc | ExistingNetwork, **kwargs
+    ) -> None:
         super().__init__(scope, construct_id, **kwargs)
+        if isinstance(vpc, ExistingNetwork):
+            vpc = import_vpc(self, vpc)
         for spec in specs:
             app = Construct(self, spec.id)
             service = self._compute(app, spec, vpc)
