@@ -57,7 +57,9 @@ def test_cognito_without_a_strong_secret_fails_naming_it(monkeypatch, secret):
 @pytest.mark.parametrize("var", ["COGNITO_USER_POOL_ID", "COGNITO_APP_CLIENT_ID"])
 def test_pool_without_client_or_the_reverse_fails(monkeypatch, var):
     _cognito(monkeypatch)
-    monkeypatch.delenv(var)
+    # Blank rather than deleted: a deleted variable falls back to the developer's own .env, which holds the real
+    # Cognito ids once deploy_auth.py has run, and the test would then pass or fail depending on that file.
+    monkeypatch.setenv(var, "")
     with pytest.raises(config.SettingsError, match="COGNITO_APP_CLIENT_ID"):
         config.load_settings()
 

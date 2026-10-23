@@ -72,20 +72,38 @@ def check(c: config.Config, session) -> None:
         raise NetworkCheckError(f"The VPC {network.vpc_id} cannot host the app:\n  " + "\n  ".join(problems))
 
 
-def _egress_problems(tables: list[dict], subnet_ids: list[str]) -> list[str]:
+def _live_default_routes(tables: list[dict], subnet_id: str) -> tuple[list[dict], list[dict]]:
+    """(all default routes, the active ones) of the table the subnet uses: its own, or else the main one."""
     explicit = {a["SubnetId"]: t for t in tables for a in t.get("Associations", []) if a.get("SubnetId")}
     main = next((t for t in tables for a in t.get("Associations", []) if a.get("Main")), None)
-    problems = []
-    for subnet_id in subnet_ids:
-        table = explicit.get(subnet_id, main)
-        routes = [r for r in (table or {}).get("Routes", []) if r.get("DestinationCidrBlock") == DEFAULT_ROUTE]
-        live = [r for r in routes if r.get("State", "active") == "active"]
-        if not live:
-            why = "its default route is a blackhole" if routes else f"it has no route to the Internet ({DEFAULT_ROUTE})"
-            problems.append(f"Subnet {subnet_id}: {why}. The tasks need a NAT route to reach Cognito, Bedrock and ECR.")
-        elif any(str(r.get("GatewayId", "")).startswith("igw-") for r in live):
-            problems.append(
-                f"Subnet {subnet_id} routes {DEFAULT_ROUTE} through an internet gateway. The tasks have no public IP, "
-                "so use a subnet whose route goes through a NAT."
-            )
-    return problems
+    table = explicit.get(subnet_id, main)
+    routes = [r for r in (table or {}).get("Routes", []) if r.get("DestinationCidrBlock") == DEFAULT_ROUTE]
+    return routes, [r for r in routes if r.get("State", "active") == "active"]
+
+
+def is_public(tables: list[dict], subnet_id: str) -> bool:
+    """Whether the subnet's default route goes through an internet gateway."""
+    _, live = _live_default_routes(tables, subnet_id)
+    return any(str(r.get("GatewayId", "")).startswith("igw-") for r in live)
+
+
+def egress_problem(tables: list[dict], subnet_id: str) -> str | None:
+    """Why this subnet cannot give the tasks a way out to the Internet, or None when it can.
+
+    The single check behind both the deploy-time verification and `find_network.py`, so what the
+    one offers the other always accepts.
+    """
+    routes, live = _live_default_routes(tables, subnet_id)
+    if not live:
+        why = "its default route is a blackhole" if routes else f"it has no route to the Internet ({DEFAULT_ROUTE})"
+        return f"Subnet {subnet_id}: {why}. The tasks need a NAT route to reach Cognito, Bedrock and ECR."
+    if is_public(tables, subnet_id):
+        return (
+            f"Subnet {subnet_id} routes {DEFAULT_ROUTE} through an internet gateway. The tasks have no public IP, "
+            "so use a subnet whose route goes through a NAT."
+        )
+    return None
+
+
+def _egress_problems(tables: list[dict], subnet_ids: list[str]) -> list[str]:
+    return [problem for subnet_id in subnet_ids if (problem := egress_problem(tables, subnet_id))]

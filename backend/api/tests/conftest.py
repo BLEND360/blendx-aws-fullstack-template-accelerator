@@ -15,6 +15,11 @@ TEST_ENV = {
     "HARNESS_ENDPOINT": "PROD",
     "ALLOWED_MODEL_IDS": '["model-a"]',
     "LOCAL_AUTH_BYPASS": "false",
+    # Blank, not absent: a variable in the environment wins over the developer's own .env, which holds the real
+    # Cognito ids once scripts/deploy_auth.py has run and would turn sign-in on under every test.
+    "COGNITO_USER_POOL_ID": "",
+    "COGNITO_APP_CLIENT_ID": "",
+    "AUTH_JWT_SECRET": "",
     "AWS_ACCESS_KEY_ID": "testing",
     "AWS_SECRET_ACCESS_KEY": "testing",
     "AWS_CONFIG_FILE": os.devnull,

@@ -5,6 +5,8 @@ __pycache__/
 node_modules/
 dist/
 cdk.out/
+# CDK lookup cache (availability zones, ...): specific to the account that ran the synth
+cdk.context.json
 
 # Starter harness config, rendered from project.toml by infra/harness_files.py
 harness/agentcore/agentcore.json

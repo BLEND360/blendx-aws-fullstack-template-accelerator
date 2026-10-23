@@ -61,10 +61,6 @@ def test_a_malformed_subnet_id_is_named(tmp_path):
         with_network(tmp_path, f'vpc_id = "vpc-0123abcd"\nprivate_subnets = {bad}\n')
 
 
-def test_the_repo_project_toml_still_creates_the_network():
-    assert not config.load().uses_existing_network
-
-
 # --- importing the existing VPC (task 2.3) ---
 
 import aws_cdk as cdk

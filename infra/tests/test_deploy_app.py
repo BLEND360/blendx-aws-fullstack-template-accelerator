@@ -3,6 +3,7 @@
 import base64
 import hashlib
 import importlib.util
+import json
 import tomllib
 from pathlib import Path
 
@@ -16,7 +17,8 @@ SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
 PREFIX = "arn:aws:bedrock-agentcore:eu-west-1:111122223333"
 HARNESS, MEMORY = f"{PREFIX}:harness/assistant-AbC123", f"{PREFIX}:memory/assistant_mem-XyZ789"
 IMAGE_ID = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-TAG = "0123456789ab"
+LAYERS = ["sha256:" + "a" * 64, "sha256:" + "b" * 64]
+TAG = hashlib.sha256("\n".join(LAYERS).encode()).hexdigest()[:12]  # the tag follows the layers, not the image id
 CLOUDFRONT = "https://d111111abcdef8.cloudfront.net"
 SUBNETS = '{ eu-west-1a = "subnet-0a1b2c3d", eu-west-1b = "subnet-4e5f6a7b" }'
 
@@ -39,6 +41,8 @@ class World:
         self.toml_path: Path | None = None
         self.invalidation_error: ClientError | None = None
         self.auth_deploy_error: Exception | None = None
+        self.image_id, self.layers = IMAGE_ID, list(LAYERS)
+        self.docker_configs: list[tuple] = []  # (command, config dir, config.json text) for each docker call given its own config
         self.events: list[tuple] = []  # ("cdk", ...), ("run", ...), ("invalidate", ...), ("put", key), ("delete", key)
 
     # --- boto3 ---
@@ -155,8 +159,13 @@ class World:
 
     def run(self, *cmd, cwd=None, env=None, capture=False, input=None):
         self.events.append(("run", cmd, env, input))
+        if env and "DOCKER_CONFIG" in env:  # what docker would read, captured while it exists
+            directory = Path(env["DOCKER_CONFIG"])
+            self.docker_configs.append((cmd, directory, (directory / "config.json").read_text(encoding="utf-8") if (directory / "config.json").exists() else None))
         if cmd[:2] == ("docker", "build"):
-            return IMAGE_ID + "\n"
+            return self.image_id + "\n"
+        if cmd[:3] == ("docker", "image", "inspect"):
+            return json.dumps(self.layers)
         return ""
 
     # --- queries over the record ---
@@ -324,7 +333,7 @@ def test_when_the_repository_exists_the_image_goes_first_and_there_is_one_deploy
     assert world.kinds().index(("run", ("docker", "push"))) < world.kinds().index("cdk")
 
 
-def test_the_image_is_built_for_x86_and_tagged_with_the_start_of_its_id(deploy_app, monkeypatch, tmp_path):
+def test_the_image_is_built_for_x86_and_tagged_from_its_layers(deploy_app, monkeypatch, tmp_path):
     c, world, _ = arrange(deploy_app, monkeypatch, tmp_path)
     go(deploy_app)
     (build,) = world.commands("docker", "build")
@@ -341,11 +350,26 @@ def test_a_tag_already_in_the_repository_is_not_pushed_again(deploy_app, monkeyp
     assert context([c_ for c_ in world.cdk_calls() if c.app_stack in c_][0])["image_tag"] == TAG
 
 
-def test_the_registry_password_goes_through_stdin_never_the_command_line(deploy_app, monkeypatch, tmp_path):
+def test_the_registry_login_never_touches_the_users_docker_credential_store(deploy_app, monkeypatch, tmp_path):
+    """On Windows the credential store caps a credential at 2560 bytes and an ECR token is longer, so
+    `docker login` fails there. The script gives docker a throwaway config that already holds the token."""
     c, world, _ = arrange(deploy_app, monkeypatch, tmp_path)
     go(deploy_app)
-    (login,) = [e for e in world.events if e[0] == "run" and e[1][:2] == ("docker", "login")]
-    assert login[3] == "s3cr3t-password" and "s3cr3t-password" not in " ".join(login[1])
+    assert world.commands("docker", "login") == []
+    ((push, directory, text),) = world.docker_configs
+    assert push[:2] == ("docker", "push")
+    registry = f"{c.aws_account}.dkr.ecr.{c.aws_region}.amazonaws.com"
+    auths = json.loads(text)["auths"]
+    assert base64.b64decode(auths[registry]["auth"]).decode() == "AWS:s3cr3t-password"
+    assert not directory.exists()  # the token does not outlive the push
+
+
+def test_the_registry_token_is_never_on_a_command_line_or_printed(deploy_app, monkeypatch, tmp_path, capsys):
+    c, world, _ = arrange(deploy_app, monkeypatch, tmp_path)
+    go(deploy_app)
+    assert all("s3cr3t" not in " ".join(e[1]) for e in world.events if e[0] == "run")
+    captured = capsys.readouterr()
+    assert "s3cr3t" not in captured.out + captured.err
 
 
 def test_the_deployment_carries_what_was_resolved_and_names_both_stacks(deploy_app, monkeypatch, tmp_path):
@@ -514,3 +538,27 @@ def test_the_return_address_is_added_after_the_site_is_published(deploy_app, mon
 def test_content_types_do_not_depend_on_the_machines_registry(deploy_app, monkeypatch, key, expected):
     monkeypatch.setattr(deploy_app.mimetypes, "guess_type", lambda _: ("text/plain", None))  # a Windows registry gone wrong
     assert deploy_app.content_type(key) == (expected if key not in ("i.html", "x.unknown") else "text/plain")
+
+
+def tag_of(world: World, deploy_app, monkeypatch, tmp_path) -> str:
+    go(deploy_app)
+    (deploy,) = [c_ for c_ in world.cdk_calls() if world.c.app_stack in c_]
+    return context(deploy)["image_tag"]
+
+
+def test_a_rebuild_of_the_same_code_gets_the_same_tag_even_though_the_image_id_changes(deploy_app, monkeypatch, tmp_path):
+    """BuildKit stamps every image with its build time, so the id differs on every build (seen on the first real
+    deployment: a repeat run redeployed the service). The layers are what stays the same."""
+    c, world, _ = arrange(deploy_app, monkeypatch, tmp_path)
+    first = tag_of(world, deploy_app, monkeypatch, tmp_path)
+    world.events.clear()
+    world.image_id = "sha256:" + "f" * 64
+    assert tag_of(world, deploy_app, monkeypatch, tmp_path) == first == TAG
+
+
+def test_changed_code_gets_a_new_tag(deploy_app, monkeypatch, tmp_path):
+    c, world, _ = arrange(deploy_app, monkeypatch, tmp_path)
+    first = tag_of(world, deploy_app, monkeypatch, tmp_path)
+    world.events.clear()
+    world.layers = [*LAYERS, "sha256:" + "c" * 64]
+    assert tag_of(world, deploy_app, monkeypatch, tmp_path) != first

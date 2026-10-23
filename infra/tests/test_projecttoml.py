@@ -15,7 +15,14 @@ _spec.loader.exec_module(projecttoml)
 
 URL = "https://d111111abcdef8.cloudfront.net/"
 OTHER = "https://app.example.com/"
-REPO_TOML = (Path(__file__).resolve().parents[2] / "project.toml").read_text(encoding="utf-8")
+# The [auth] block the template ships with, as a copy: the repo's own project.toml changes as it gets deployed.
+TEMPLATE_AUTH = """
+[auth]
+# Extra sign-in / sign-out return addresses besides http://localhost:5173/ (always allowed).
+# Add the deployed app's public URL, with a trailing slash, once it exists.
+# callback_urls = ["https://app.example.com/"]
+"""
+REPO_TOML = VALID + TEMPLATE_AUTH
 
 
 def put(tmp_path, text: str, newline: str = "\n") -> Path:

@@ -11,13 +11,14 @@ creates, modifies and invalidates nothing. Needs an AWS account per environment:
 """
 
 import argparse
-import base64
 import hashlib
+import json
 import mimetypes
 import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import uuid
 from pathlib import Path
 
@@ -141,9 +142,14 @@ def repository_exists(c: config.Config, session) -> bool:
 
 
 def build_and_push(c: config.Config, session) -> str:
-    """The image's tag is the start of its id: the same build gives the same tag, and a tag already in the repository is not pushed."""
+    """The image's tag follows its layers: the same code gives the same tag, and a tag already in the repository is not pushed.
+
+    Not the image id: BuildKit stamps every image with its build time, so the id changes on every build
+    even when nothing did, and a repeat run would redeploy the service (seen on the first real deployment).
+    """
     image = run("docker", "build", "--platform", "linux/amd64", "-q", ".", capture=True).strip()
-    tag = image.split(":")[-1][:12]
+    layers = json.loads(run("docker", "image", "inspect", "--format", "{{json .RootFS.Layers}}", image, capture=True))
+    tag = hashlib.sha256("\n".join(layers).encode()).hexdigest()[:12]
     registry = f"{c.aws_account}.dkr.ecr.{c.aws_region}.amazonaws.com"
     reference = f"{registry}/{c.ecr_repository}:{tag}"
     ecr = session.client("ecr")
@@ -154,11 +160,14 @@ def build_and_push(c: config.Config, session) -> str:
     except ClientError as e:
         if e.response["Error"]["Code"] != "ImageNotFoundException":
             raise
-    token = ecr.get_authorization_token()["authorizationData"][0]["authorizationToken"]
-    user, password = base64.b64decode(token).decode().split(":", 1)
-    run("docker", "login", "--username", user, "--password-stdin", registry, input=password)  # never on the command line
+    token = ecr.get_authorization_token()["authorizationData"][0]["authorizationToken"]  # already base64("AWS:<password>")
     run("docker", "tag", image, reference)
-    run("docker", "push", reference)
+    # No `docker login`: it stores the token in the user's credential store, and Windows' caps a credential at
+    # 2560 bytes while an ECR token is longer ("error storing credentials"). Docker reads `auths` straight from
+    # a config file, so a throwaway one holds the token for the push and is deleted with it.
+    with tempfile.TemporaryDirectory(prefix="docker-config-") as config_dir:
+        Path(config_dir, "config.json").write_text(json.dumps({"auths": {registry: {"auth": token}}}), encoding="utf-8")
+        run("docker", "push", reference, env={"DOCKER_CONFIG": config_dir})
     return tag
 
 
