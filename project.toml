@@ -1,0 +1,45 @@
+# Single parameter source. Every resource name in every layer is derived from
+# this file by infra/config.py. Edit it, then run `python scripts/setup.py`.
+
+[project]
+name        = "my-app"          # lowercase letters, digits, hyphens; 3-24 chars
+aws_account = "123456789012"
+aws_region  = "us-east-1"
+github_org  = "BLEND360"
+github_repo = "my-app"          # repository the deploy role trusts (GitHub OIDC)
+
+# Leave this section out and the template creates the VPC (`<name>-network`). To deploy into a VPC
+# that already exists instead, uncomment and fill it: its private subnets need a route out to the
+# Internet through a NAT (not an internet gateway), and the VPC needs an internet gateway attached
+# (CloudFront requires it for a private origin). The deploy script checks all of that. Nothing in the
+# VPC is created or modified.
+# [network]
+# vpc_id          = "vpc-0123456789abcdef0"
+# private_subnets = { us-east-1a = "subnet-0123456789abcdef0", us-east-1b = "subnet-0fedcba9876543210" }
+
+[auth]
+# Extra sign-in / sign-out return addresses besides http://localhost:5173/ (always allowed).
+# Add the deployed app's public URL, with a trailing slash, once it exists.
+# callback_urls = ["https://app.example.com/"]
+
+[harness]
+# Leave empty to deploy and use the template's starter harness.
+# Set to an existing harness ARN to consume that one instead; the starter
+# harness is then not deployed.
+arn       = ""
+endpoint  = "PROD"   # which alias of that harness to invoke
+model_id  = "us.anthropic.claude-sonnet-4-5-20250929-v1:0"    # starter harness
+model_ids = ["us.anthropic.claude-sonnet-4-5-20250929-v1:0"]  # backend allowlist
+
+# Per environment: tasks, Fargate cpu/memory, and NAT gateways (1 or 2: one per zone).
+[environments.dev]
+desired_count = 1
+cpu           = 256
+memory        = 512
+nat_gateways  = 1
+
+[environments.prod]
+desired_count = 2
+cpu           = 512
+memory        = 1024
+nat_gateways  = 2

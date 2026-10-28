@@ -1,0 +1,125 @@
+{
+  "vocabulary": [
+    "delta",
+    "done",
+    "error",
+    "tool_finished",
+    "tool_input",
+    "tool_started"
+  ],
+  "turns": [
+    {
+      "name": "normal",
+      "harnessFixture": "tool_call",
+      "requestId": null,
+      "events": [
+        {
+          "type": "delta",
+          "text": "Let me check. "
+        },
+        {
+          "type": "tool_started",
+          "callId": "tooluse_1",
+          "toolId": "current_time",
+          "label": "Checking the time"
+        },
+        {
+          "type": "tool_input",
+          "callId": "tooluse_1",
+          "input": {
+            "format": "unix"
+          }
+        },
+        {
+          "type": "tool_finished",
+          "callId": "tooluse_1",
+          "status": "success",
+          "result": {
+            "time": 1700000000
+          }
+        },
+        {
+          "type": "delta",
+          "text": "It is "
+        },
+        {
+          "type": "delta",
+          "text": "late."
+        },
+        {
+          "type": "done"
+        }
+      ],
+      "wire": "event: delta\ndata: {\"text\": \"Let me check. \"}\n\nevent: tool_started\ndata: {\"callId\": \"tooluse_1\", \"toolId\": \"current_time\", \"label\": \"Checking the time\"}\n\nevent: tool_input\ndata: {\"callId\": \"tooluse_1\", \"input\": {\"format\": \"unix\"}}\n\nevent: tool_finished\ndata: {\"callId\": \"tooluse_1\", \"status\": \"success\", \"result\": {\"time\": 1700000000}}\n\nevent: delta\ndata: {\"text\": \"It is \"}\n\nevent: delta\ndata: {\"text\": \"late.\"}\n\nevent: done\ndata: {}\n\n",
+      "state": {
+        "items": [
+          {
+            "kind": "assistant",
+            "text": "Let me check. ",
+            "complete": true
+          },
+          {
+            "kind": "tool",
+            "callId": "tooluse_1",
+            "label": "Checking the time",
+            "status": "success",
+            "input": {
+              "format": "unix"
+            },
+            "result": {
+              "time": 1700000000
+            }
+          },
+          {
+            "kind": "assistant",
+            "text": "It is late.",
+            "complete": true
+          }
+        ],
+        "turn": {
+          "phase": "idle"
+        }
+      }
+    },
+    {
+      "name": "fails_midstream",
+      "harnessFixture": "fails_midstream",
+      "requestId": "rid-contract",
+      "events": [
+        {
+          "type": "delta",
+          "text": "Working on it"
+        },
+        {
+          "type": "delta",
+          "text": " and "
+        },
+        {
+          "type": "error",
+          "code": "harness_unavailable",
+          "retryable": true,
+          "requestId": "rid-contract"
+        }
+      ],
+      "wire": "event: delta\ndata: {\"text\": \"Working on it\"}\n\nevent: delta\ndata: {\"text\": \" and \"}\n\nevent: error\ndata: {\"code\": \"harness_unavailable\", \"retryable\": true, \"requestId\": \"rid-contract\"}\n\n",
+      "state": {
+        "items": [
+          {
+            "kind": "assistant",
+            "text": "Working on it and ",
+            "complete": true
+          }
+        ],
+        "turn": {
+          "phase": "failed",
+          "failure": {
+            "kind": "stream",
+            "code": "harness_unavailable",
+            "retryable": true,
+            "requestId": "rid-contract"
+          }
+        }
+      }
+    }
+  ]
+}

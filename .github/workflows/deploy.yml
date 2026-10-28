@@ -1,0 +1,104 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: GitHub Environment to deploy
+        type: choice
+        required: true
+        default: dev
+        options: [dev, prod]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ inputs.environment || 'dev' }}
+  cancel-in-progress: false
+
+jobs:
+  tests:
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+      id-token: write
+
+  deploy:
+    needs: tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment:
+      name: ${{ inputs.environment || 'dev' }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: infra/uv.lock
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/web/package-lock.json
+      - name: Install pipeline tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes jq
+          npm install --global @aws/agentcore
+          aws --version
+          jq --version
+      - name: Install infrastructure dependencies
+        run: uv sync --frozen
+        working-directory: infra
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: deploy-${{ github.run_id }}-${{ inputs.environment || 'dev' }}
+
+      - name: Deploy GitHub roles
+        run: uv run --project infra python scripts/bootstrap.py --roles-only
+      - name: Deploy sign-in stack
+        run: uv run --project infra python scripts/deploy_auth.py --stack-only
+      - name: Deploy data stack
+        run: uv run --project infra python scripts/deploy_data.py
+      - name: Deploy harness
+        run: uv run --project infra python scripts/deploy_harness.py
+
+      - name: Select changed artifacts
+        id: filter
+        if: github.event_name == 'push'
+        run: uv run --project infra python scripts/changed_paths.py --env "${{ inputs.environment || 'dev' }}"
+      - name: Build and publish API image
+        if: github.event_name == 'workflow_dispatch' || steps.filter.outputs.image == 'true'
+        run: >-
+          uv run --project infra python scripts/deploy_app.py --env "${{ inputs.environment || 'dev' }}" --step image
+          --image-tag '${{ github.sha }}-${{ github.run_attempt }}'
+      - name: Deploy app stack with this run's image
+        if: github.event_name == 'workflow_dispatch' || steps.filter.outputs.image == 'true'
+        run: >-
+          uv run --project infra python scripts/deploy_app.py --env "${{ inputs.environment || 'dev' }}" --step stack
+          --image-tag '${{ github.sha }}-${{ github.run_attempt }}'
+      - name: Deploy app stack and keep the running image
+        if: github.event_name == 'push' && steps.filter.outputs.image != 'true'
+        run: uv run --project infra python scripts/deploy_app.py --env "${{ inputs.environment || 'dev' }}" --step stack --keep-image
+      - name: Publish SPA
+        if: github.event_name == 'workflow_dispatch' || steps.filter.outputs.spa == 'true'
+        run: uv run --project infra python scripts/deploy_app.py --env "${{ inputs.environment || 'dev' }}" --step spa
+      - name: Smoke test public API
+        run: uv run --project infra python scripts/smoke_test.py --env "${{ inputs.environment || 'dev' }}"
+      - name: Confirm project.toml callback URL
+        run: |
+          if ! git diff --quiet -- project.toml; then
+            echo 'The deploy updated project.toml. Review and commit this callback URL:'
+            git diff -- project.toml
+            exit 1
+          fi

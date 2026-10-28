@@ -1,0 +1,52 @@
+{
+  "_note": "Raw InvokeHarness event stream, one list per invocation, built from the bedrock-agentcore 2024-02-28 service model (botocore 1.43). Synthetic: built from the service model; the starter harness cannot produce it. A protocol marker split across three fragments.",
+  "streams": [
+    [
+      {
+        "messageStart": {
+          "role": "assistant"
+        }
+      },
+      {
+        "contentBlockStart": {
+          "contentBlockIndex": 0,
+          "start": {}
+        }
+      },
+      {
+        "contentBlockDelta": {
+          "contentBlockIndex": 0,
+          "delta": {
+            "text": "Answer <|DS"
+          }
+        }
+      },
+      {
+        "contentBlockDelta": {
+          "contentBlockIndex": 0,
+          "delta": {
+            "text": "ML|function"
+          }
+        }
+      },
+      {
+        "contentBlockDelta": {
+          "contentBlockIndex": 0,
+          "delta": {
+            "text": "_calls and more."
+          }
+        }
+      },
+      {
+        "contentBlockStop": {
+          "contentBlockIndex": 0
+        }
+      },
+      {
+        "messageStop": {
+          "stopReason": "end_turn"
+        }
+      }
+    ]
+  ]
+}
