@@ -318,6 +318,38 @@ button.card:hover,
   color: var(--color-text-secondary);
 }
 
+.card-more {
+  margin-top: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.model-list {
+  list-style: none;
+  margin: 0;
+  gap: 0;
+}
+
+.model-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+}
+
+.login-page {
+  padding: 48px;
+}
+
+.login-card {
+  width: 360px;
+}
+
+.login-title {
+  margin: 0;
+}
+
 .status-pill {
   display: inline-flex;
   align-items: center;

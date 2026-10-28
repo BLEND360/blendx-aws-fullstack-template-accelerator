@@ -1,6 +1,4 @@
-/** The only public entry of the brand. Everything else in the app imports from
- * here and never from a file inside this folder, so replacing the folder
- * replaces the brand. `tests/neutral-tokens` declares the same contract. */
+/** The only public entry of the brand; `tests/neutral-tokens` declares the same contract. */
 import "@fontsource-variable/montserrat";
 import "./global.css";
 import faviconUrl from "./assets/blend-symbol-ink.svg";

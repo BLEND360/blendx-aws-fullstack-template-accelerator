@@ -119,8 +119,7 @@ export function ItemsPage() {
   const queryClient = useQueryClient();
   const items = useQuery({ queryKey: ["items"], queryFn: ({ signal }) => listItems(signal), retry: false });
 
-  // `null` is a new item; undefined is "dialog closed".
-  const [editing, setEditing] = useState<Item | null | undefined>(undefined);
+  const [editing, setEditing] = useState<{ open: boolean; item: Item | null }>({ open: false, item: null });
   const [deleting, setDeleting] = useState<Item | null>(null);
 
   const remove = useMutation({
@@ -131,7 +130,12 @@ export function ItemsPage() {
     },
   });
 
-  const open = () => setEditing(null);
+  const open = () => setEditing({ open: true, item: null });
+  const askDelete = (item: Item) => {
+    remove.reset();
+    setDeleting(item);
+  };
+  const close = () => setEditing((current) => ({ ...current, open: false }));
 
   return (
     <div className="page">
@@ -171,21 +175,21 @@ export function ItemsPage() {
           </h3>
           <div className="card-grid">
             {items.data.map((item) => (
-              <ItemCard key={item.id} item={item} onEdit={() => setEditing(item)} onDelete={() => setDeleting(item)} />
+              <ItemCard key={item.id} item={item} onEdit={() => setEditing({ open: true, item })} onDelete={() => askDelete(item)} />
             ))}
           </div>
         </section>
       )}
 
       <Modal
-        open={editing !== undefined}
-        title={editing ? messages.itemEditTitle : messages.itemNewTitle}
+        open={editing.open}
+        title={editing.item ? messages.itemEditTitle : messages.itemNewTitle}
         footer={null}
         destroyOnHidden
-        onCancel={() => setEditing(undefined)}
+        onCancel={close}
         width={520}
       >
-        <ItemForm item={editing ?? null} onDone={() => setEditing(undefined)} />
+        <ItemForm item={editing.item} onDone={close} />
       </Modal>
 
       <Modal

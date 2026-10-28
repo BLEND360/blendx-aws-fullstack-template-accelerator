@@ -143,3 +143,32 @@ test("deleting asks first, then removes the item", async () => {
   expect(await screen.findByText("No items yet")).toBeInTheDocument();
   expect(fetchImpl.mock.calls.filter(([, init]) => init?.method === "DELETE")).toHaveLength(1);
 });
+
+test("a failed delete's error does not carry over to the next item", async () => {
+  const inner = itemsFetch(unrouted, [...structuredClone(ONE), { ...ONE[0], id: "item-2", name: "Second" }]);
+  const failing = vi.fn<typeof fetch>((input, init) =>
+    init?.method === "DELETE" && String(input).endsWith("item-1")
+      ? Promise.resolve(
+          new Response(JSON.stringify({ error: { code: "data_unavailable", message: "Down.", retryable: true, requestId: "r-1" } }), {
+            status: 503,
+            headers: { "Content-Type": "application/json" },
+          }),
+        )
+      : inner(input, init),
+  );
+  mount(failing);
+  const askToDelete = async (name: string) => {
+    await userEvent.click(await screen.findByRole("button", { name: `Item actions: ${name}` }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: /delete/i }));
+    return screen.findByRole("dialog", { name: "Delete this item?" });
+  };
+
+  const first = await askToDelete("First");
+  await userEvent.click(within(first).getByRole("button", { name: "Delete" }));
+  expect(await within(first).findByRole("alert")).toBeInTheDocument();
+  await userEvent.click(within(first).getByRole("button", { name: "Cancel" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+  const second = await askToDelete("Second");
+  expect(within(second).queryByRole("alert")).not.toBeInTheDocument();
+});

@@ -1,8 +1,4 @@
-/** A brandless replacement for src/tokens: antd's default light and dark themes,
- * no logo, no fonts. `npm run test:neutral` swaps it in for src/tokens/index.ts
- * and runs the whole suite, which is the proof that replacing the folder (same
- * entry point, same exports) leaves the app compiling and working, with no
- * trace of Blend. Start from this file when adopting another brand. */
+/** A brandless stand-in for src/tokens (antd defaults, no logo or fonts); `npm run test:neutral` runs the suite against it. */
 import { theme } from "antd";
 import { Fragment, createElement } from "react";
 import type { ThemeConfig } from "antd";

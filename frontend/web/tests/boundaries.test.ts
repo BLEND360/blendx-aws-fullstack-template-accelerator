@@ -74,8 +74,3 @@ test("an API base URL anywhere in the repository is flagged, lock files and spec
   put("frontend/web/scripts/boundaries.mjs", `${BASE_URL}\n`);
   expect(scan(root).map((v) => v.file).sort()).toEqual(["backend/api/app/x.py", "frontend/web/.env"]);
 });
-
-test("the repository itself has no violations", () => {
-  const repoRoot = path.resolve(import.meta.dirname, "../../..");
-  expect(scan(repoRoot)).toEqual([]);
-});

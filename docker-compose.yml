@@ -1,5 +1,6 @@
 # Local run of the whole app: `docker compose up --build`, then http://localhost:5173.
-# Needs backend/api/.env (python scripts/setup.py).
+# Needs backend/api/.env (python scripts/setup.py). ~/.aws is mounted read-only; if `aws login`
+# credentials need it writable, mount it without :ro in a git-ignored docker-compose.override.yml.
 services:
   api:
     # The same image ECS runs.

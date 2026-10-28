@@ -15,9 +15,22 @@ interface ThemeModeValue {
 
 const ThemeModeContext = createContext<ThemeModeValue | undefined>(undefined);
 
+// Storage can be unavailable (blocked, private mode): the choice then lasts for the page only.
 function readChoice(): ThemeMode | null {
-  const stored = localStorage.getItem(STORAGE_KEY);
-  return stored === "light" || stored === "dark" ? stored : null;
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    return stored === "light" || stored === "dark" ? stored : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeChoice(mode: ThemeMode): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, mode);
+  } catch {
+    // not remembered
+  }
 }
 
 /** Paints the page itself (antd themes components, not the body) from the active tokens. */
@@ -48,7 +61,7 @@ export function ThemeModeProvider({ children }: { children: ReactNode }) {
     () => ({
       mode,
       setMode(next) {
-        localStorage.setItem(STORAGE_KEY, next);
+        writeChoice(next);
         setChoice(next);
       },
     }),

@@ -10,6 +10,9 @@ class ResizeObserverStub implements ResizeObserver {
 }
 vi.stubGlobal("ResizeObserver", ResizeObserverStub);
 
+// jsdom has no layout, so no scrolling.
+Element.prototype.scrollIntoView = () => {};
+
 // Tests choose the OS preference by replacing window.matchMedia themselves;
 // this default is "light, no listeners".
 if (!window.matchMedia) {
@@ -28,8 +31,10 @@ if (!window.matchMedia) {
 // antd sizes an auto-growing textarea from getComputedStyle; jsdom answers with empty values, which
 // turns the height into NaN. Padding and border default to 0px, the rest passes through untouched.
 const realGetComputedStyle = window.getComputedStyle.bind(window);
-vi.spyOn(window, "getComputedStyle").mockImplementation((element, pseudo) => {
-  const style = realGetComputedStyle(element, pseudo);
+vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
+  // jsdom logs "not implemented" when a pseudo-element is requested; these tests
+  // only need computed values from the element itself.
+  const style = realGetComputedStyle(element);
   return new Proxy(style, {
     get(target, property) {
       if (property === "getPropertyValue") {

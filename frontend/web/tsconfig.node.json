@@ -12,5 +12,5 @@
     "strict": true,
     "types": ["node"]
   },
-  "include": ["vite.config.ts", "vitest.neutral.config.ts", "dev"]
+  "include": ["vite.config.ts", "vitest.neutral.config.ts"]
 }

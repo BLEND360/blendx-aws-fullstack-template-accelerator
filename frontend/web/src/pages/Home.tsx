@@ -1,4 +1,4 @@
-import { ArrowRightOutlined, DatabaseOutlined, HistoryOutlined, MessageOutlined, ThunderboltOutlined } from "@ant-design/icons";
+import { ArrowRightOutlined, DatabaseOutlined, MessageOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import { Tag, Typography } from "antd";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
@@ -21,7 +21,7 @@ function QuickCard({ to, icon, title, text }: { to: string; icon: ReactNode; tit
       </span>
       <h3 className="card-title">{title}</h3>
       <p className="card-text">{text}</p>
-      <span className="card-text" style={{ marginTop: "auto", display: "inline-flex", alignItems: "center", gap: 6 }}>
+      <span className="card-text card-more">
         <ArrowRightOutlined aria-hidden />
       </span>
     </Link>
@@ -57,30 +57,17 @@ export function Home() {
         </div>
       </section>
 
-      <div className="card-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", alignItems: "start" }}>
-        <section>
-          <h3 className="section-title">{messages.homeActivityTitle}</h3>
-          <div className="empty">
-            <span className="empty-icon" aria-hidden>
-              <HistoryOutlined />
-            </span>
-            <h3>{messages.homeActivityEmpty}</h3>
-            <p style={{ marginBottom: 0 }}>{messages.homeActivityHint}</p>
-          </div>
-        </section>
-
-        <section>
-          <h3 className="section-title">{messages.modelsTitle}</h3>
-          <ul className="card" style={{ listStyle: "none", margin: 0, gap: 0 }}>
-            {config.allowedModelIds.map((id) => (
-              <li key={id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0" }}>
-                <Typography.Text code>{id}</Typography.Text>
-                {id === config.defaultModelId && <Tag>{messages.defaultModel}</Tag>}
-              </li>
-            ))}
-          </ul>
-        </section>
-      </div>
+      <section>
+        <h3 className="section-title">{messages.modelsTitle}</h3>
+        <ul className="card model-list">
+          {config.allowedModelIds.map((id) => (
+            <li key={id}>
+              <Typography.Text code>{id}</Typography.Text>
+              {id === config.defaultModelId && <Tag>{messages.defaultModel}</Tag>}
+            </li>
+          ))}
+        </ul>
+      </section>
     </div>
   );
 }

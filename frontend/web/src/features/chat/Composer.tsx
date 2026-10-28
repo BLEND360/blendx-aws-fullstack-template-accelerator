@@ -1,6 +1,6 @@
 import { SendOutlined } from "@ant-design/icons";
 import { Button, Flex, Input, Typography } from "antd";
-import type { TextAreaRef } from "antd/es/input/TextArea";
+import type { GetRef } from "antd";
 import { useEffect, useRef, useState } from "react";
 import { messages } from "../../messages";
 import { MAX_MESSAGE_CHARS } from "./chatState";
@@ -11,12 +11,12 @@ const SHOW_COUNTER_FROM = Math.floor(MAX_MESSAGE_CHARS * 0.8);
 export interface ComposerProps {
   /** The conversation is loading or a turn is running: typing is fine, sending is not. */
   disabled: boolean;
-  onSend: (text: string) => void;
+  onSend?: (text: string) => void;
 }
 
 export function Composer({ disabled, onSend }: ComposerProps) {
   const [value, setValue] = useState("");
-  const input = useRef<TextAreaRef>(null);
+  const input = useRef<GetRef<typeof Input.TextArea>>(null);
 
   // Ready again (the conversation loaded, or a turn ended in any way): the cursor is back in the field.
   useEffect(() => {
@@ -28,7 +28,7 @@ export function Composer({ disabled, onSend }: ComposerProps) {
 
   const submit = () => {
     if (!canSend) return;
-    onSend(value);
+    onSend?.(value);
     setValue("");
   };
 

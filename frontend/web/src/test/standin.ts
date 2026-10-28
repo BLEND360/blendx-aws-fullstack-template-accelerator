@@ -1,5 +1,5 @@
-import { handleItems } from "../../dev/items-standin";
-import type { StoredItem } from "../../dev/items-standin";
+import { handleItems } from "./itemsStandin";
+import type { StoredItem } from "./itemsStandin";
 
 /** Routes fetch for /api/v1/items through the same handler the dev server uses,
  * so page tests exercise the contract and not a copy of it. Other paths go to `other`. */

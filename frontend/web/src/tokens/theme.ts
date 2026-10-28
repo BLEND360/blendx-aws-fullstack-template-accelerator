@@ -174,9 +174,7 @@ export const darkTheme: ThemeConfig = {
     // darkAlgorithm derives this as white by default; the cyan dark primary needs
     // near-black for legible contrast on solid buttons.
     colorTextLightSolid: "#0b0d0e",
-    // Link triplet tracks the primary chain: setting colorLink seeds it and the
-    // darkAlgorithm derives colorLinkHover / colorLinkActive automatically, so
-    // they end up equal to colorPrimaryHover / colorPrimaryActive (spec intent).
+    // Link hover/active derive from colorLink.
     colorLink: "#A2F3F3",
   },
   components: {

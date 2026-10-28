@@ -1,5 +1,5 @@
-import { handleItems } from "../dev/items-standin";
-import type { StoredItem } from "../dev/items-standin";
+import { handleItems } from "./itemsStandin";
+import type { StoredItem } from "./itemsStandin";
 
 const post = (body: unknown) => ({ method: "POST", body });
 const fresh = (): StoredItem[] => [];

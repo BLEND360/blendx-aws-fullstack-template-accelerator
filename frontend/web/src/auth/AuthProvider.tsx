@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { useNavigate } from "react-router";
 import { fetchCurrentUser, loginWithIdToken } from "../api/auth";
 import { ApiError, asApiError } from "../api/client";
+import { field } from "../api/guards";
 import { session } from "../api/session";
 import { isLocalMode } from "../env";
 import { messages } from "../messages";
@@ -65,7 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { access_token, user } = await loginWithIdToken(oidcUser.id_token);
         session.setToken(access_token);
         setState({ status: "authenticated", user });
-        navigate(safeReturnTo((oidcUser.state as { returnTo?: unknown } | undefined)?.returnTo), { replace: true });
+        navigate(safeReturnTo(field(oidcUser.state, "returnTo")), { replace: true });
       } catch {
         // The provider's own text is deliberately dropped.
         setState(anonymous(true));

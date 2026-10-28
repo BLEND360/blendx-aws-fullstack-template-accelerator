@@ -2,7 +2,7 @@
 
 Vite + React single-page app. It talks to the API on its own origin only:
 `/api/*` and `/auth/*`, relative paths, no base URL anywhere. Locally the Vite dev
-server proxies those two prefixes to the API; deployed, CloudFront does (ST-07).
+server proxies those two prefixes to the API; deployed, CloudFront does.
 
 ## Run it
 
@@ -35,11 +35,12 @@ parses it (the same events however the network splits them).
 
 Start the API with recorded answers and the whole chat works with no credentials and no harness:
 
-```powershell
+```bash
 cd backend/api
-$env:HARNESS_REPLAY = "true"          # bash: HARNESS_REPLAY=true uv run uvicorn ...
-uv run uvicorn app.main:app --reload
+HARNESS_REPLAY=true uv run uvicorn app.main:app --reload
 ```
+
+In PowerShell, set the variable first: `$env:HARNESS_REPLAY = "true"`.
 
 A message containing the word **tool** plays the recorded turn that calls a tool (and the tool really
 runs); anything else plays the recorded text turn. The answer does not depend on the question, so the
@@ -71,7 +72,7 @@ one with an empty name (field error); stop the API and reload (service unavailab
 | `src/features/chat/` | The chat: timeline state (`chatState`), the conversation and turn hooks, the page, the tool card |
 | `src/features/items/` | The example page: list, create, field errors, service errors. Copy it |
 | `src/messages.ts` | Fixed UI strings; the UI shows these or an API error's own message, never a response body |
-| `dev/items-standin.ts` | Test double for `/api/v1/items`, used by the page tests (the dev server proxies to the real API) |
+| `src/test/itemsStandin.ts`, `src/test/standin.ts` | Test double for `/api/v1/items` and the `fetch` wrapper over it, used only by the page tests (the dev server proxies to the real API) |
 
 A new page is a folder under `src/features/`, a route in `src/App.tsx` and a row in
 the nav list in `src/components/AppShell.tsx`.
@@ -87,6 +88,6 @@ It is textual: it does not see named colors (`red`) or values built at runtime.
 
 ## The items contract
 
-`/api/v1/items` is served by the backend (in memory locally, DynamoDB when deployed). `dev/items-standin.ts` is a test double of it
-that the page tests use; if the real contract changes, update it and `src/features/items/api.ts`
+`/api/v1/items` is served by the backend (in memory locally, DynamoDB when deployed). `src/test/itemsStandin.ts` is a test double of it
+(wrapped by `src/test/standin.ts`) that the page tests use; if the real contract changes, update it and `src/features/items/api.ts`
 together (that file is the only place the SPA knows the contract).

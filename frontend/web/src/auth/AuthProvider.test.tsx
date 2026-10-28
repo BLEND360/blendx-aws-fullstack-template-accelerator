@@ -125,7 +125,7 @@ describe("with an identity provider", () => {
     expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({ id_token: "idt" });
     expect(session.getToken()).toBe("app-tok");
     expect(window.location.search).toBe("");
-    expect(screen.getByTestId("path")).toHaveTextContent("/items");
+    await waitFor(() => expect(screen.getByTestId("path")).toHaveTextContent("/items"));
   });
 
   test("an off-origin destination in the state is ignored", async () => {

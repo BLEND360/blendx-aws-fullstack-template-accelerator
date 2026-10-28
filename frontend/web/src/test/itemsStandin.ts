@@ -24,26 +24,32 @@ export interface StandInResponse {
   body: unknown;
 }
 
+type FieldError = { location: string; message: string };
+
 const NAME_MAX = 80;
 const DESCRIPTION_MAX = 280;
 
 let counter = 0;
 let nextId = 0; // ids stay unique after a delete
 
-function failure(status: number, code: string, message: string, retryable: boolean, fields?: object[]): StandInResponse {
+function failure(status: number, code: string, message: string, retryable: boolean, fields?: FieldError[]): StandInResponse {
   return { status, body: { error: { code, message, retryable, requestId: `standin-${++counter}`, ...(fields && { fields }) } } };
 }
 
-function validate(input: Record<string, unknown>): { name: string; description: string | null } | { fields: object[] } {
+function validate(input: Record<string, unknown>): { name: string; description: string | null } | { fields: FieldError[] } {
   const name = typeof input.name === "string" ? input.name.trim() : "";
   const description = typeof input.description === "string" && input.description.trim() ? input.description.trim() : null;
-  const fields: object[] = [];
+  const fields: FieldError[] = [];
   if (!name) fields.push({ location: "body.name", message: "Name is required." });
   else if (name.length > NAME_MAX) fields.push({ location: "body.name", message: `Name must be at most ${NAME_MAX} characters.` });
   if (description && description.length > DESCRIPTION_MAX) {
     fields.push({ location: "body.description", message: `Description must be at most ${DESCRIPTION_MAX} characters.` });
   }
   return fields.length ? { fields } : { name, description };
+}
+
+function asRecord(body: unknown): Record<string, unknown> {
+  return typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {};
 }
 
 const notFound = () => failure(404, "not_found", "Item not found.", false);
@@ -75,8 +81,4 @@ export function handleItems(request: StandInRequest, store: StoredItem[]): Stand
   const item: StoredItem = { id: `item-${++nextId}`, ...created, createdAt: new Date().toISOString() };
   store.push(item);
   return { status: 201, body: item };
-}
-
-function asRecord(body: unknown): Record<string, unknown> {
-  return typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {};
 }

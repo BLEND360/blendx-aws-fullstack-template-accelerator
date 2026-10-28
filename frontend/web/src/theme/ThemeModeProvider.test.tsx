@@ -80,3 +80,16 @@ test("the document surface comes from the active theme, not from literals", () =
   renderProbe();
   expect(document.body.style.backgroundColor).not.toBe("");
 });
+
+test("unavailable storage does not break the provider; the choice still applies", async () => {
+  mockSystemPreference(false);
+  const blocked = () => {
+    throw new Error("blocked");
+  };
+  const spies = [vi.spyOn(localStorage, "getItem").mockImplementation(blocked), vi.spyOn(localStorage, "setItem").mockImplementation(blocked)];
+  renderProbe();
+  expect(screen.getByTestId("mode")).toHaveTextContent("light");
+  await userEvent.click(screen.getByText("dark"));
+  expect(screen.getByTestId("mode")).toHaveTextContent("dark");
+  spies.forEach((spy) => spy.mockRestore());
+});
