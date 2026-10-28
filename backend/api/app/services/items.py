@@ -4,30 +4,21 @@ Like sessions, everything is scoped to the owner the router took from the authen
 identity. An item that does not exist and one that belongs to someone else are the same 404.
 """
 
-import uuid
 from collections.abc import Callable
 from dataclasses import replace
-from datetime import UTC, datetime
 from typing import Any
 
 from app.core.errors import NotFoundError
 from app.core.models import ItemRecord
+from app.core.stamps import new_id, utc_now
 from app.services.ports import ItemStore
 
 NOT_FOUND = "Item not found."
 
 
-def _utc_now() -> str:
-    return datetime.now(UTC).isoformat()
-
-
-def _new_id() -> str:
-    return uuid.uuid4().hex
-
-
 class ItemService:
     def __init__(
-        self, store: ItemStore, *, now: Callable[[], str] = _utc_now, new_id: Callable[[], str] = _new_id
+        self, store: ItemStore, *, now: Callable[[], str] = utc_now, new_id: Callable[[], str] = new_id
     ) -> None:
         self._store, self._now, self._new_id = store, now, new_id
 

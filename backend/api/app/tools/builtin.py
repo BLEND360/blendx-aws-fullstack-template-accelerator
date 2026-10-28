@@ -13,7 +13,7 @@ class CurrentTimeInput(BaseModel):
     format: Literal["iso", "unix"] = Field(default="iso", description="ISO 8601 text or Unix seconds.")
 
 
-def make_current_time(clock: Callable[[], datetime] = lambda: datetime.now(UTC)):
+def make_current_time(clock: Callable[[], datetime] = lambda: datetime.now(UTC)) -> Callable[[CurrentTimeInput], dict[str, str | int]]:
     """The example tool. The clock is injectable so its test does not depend on the time it runs."""
 
     def current_time(arguments: CurrentTimeInput) -> dict[str, str | int]:

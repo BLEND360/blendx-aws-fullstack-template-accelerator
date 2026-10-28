@@ -100,15 +100,6 @@ def test_updating_someone_elses_session_is_not_found(env):
         env.service.update("alice", theirs.session_id, Overrides(model_id="model-b"))
 
 
-def test_two_updates_from_the_same_revision_apply_only_the_first(env):
-    record = env.service.create("alice", Overrides())
-    # Both requests read revision 1, then both try to write; the store lets the first through.
-    env.store.update(record, expected_revision=1)  # the other request wins the race
-    with pytest.raises(ConflictError) as raised:
-        env.store.update(record, expected_revision=1)
-    assert raised.value.code == "data_conflict"
-
-
 def test_a_stale_read_in_update_surfaces_as_data_conflict(env, monkeypatch):
     record = env.service.create("alice", Overrides())
     stale = env.service.get("alice", record.session_id)

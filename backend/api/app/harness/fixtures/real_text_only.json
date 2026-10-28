@@ -1,5 +1,5 @@
 {
-  "_note": "Recorded from a deployed starter harness (AgentCore, us-east-1, 2026-10-09) with the invocation made by scripts outside the repo; events are the raw stream as the service sends it. A plain text turn.",
+  "_note": "Recorded from a deployed starter harness (AgentCore, us-east-1, 2026-10-09); events are the raw stream as the service sends it. A plain text turn.",
   "streams": [
     [
       {

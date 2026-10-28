@@ -127,7 +127,7 @@ def test_it_pauses_between_events_so_the_streaming_can_be_seen():
 
 
 def test_it_plays_nothing_against_aws(harness):
-    play(harness, ask("anything"))  # the autouse fixture fails the test if boto3 is touched
+    assert play(harness, ask("anything"))  # the autouse fixture fails the test if boto3 is touched
 
 
 # ----------------------------------------- the settings -----------------------------------------

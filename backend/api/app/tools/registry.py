@@ -15,7 +15,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from app.core.logging import get_logger
-from app.core.models import ToolOutcome, ToolSpec
+from app.core.models import ToolOutcome, ToolSpec, tool_failed
 
 logger = get_logger(__name__)
 
@@ -23,8 +23,6 @@ logger = get_logger(__name__)
 _TOOL_ID = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 # What the browser may be sent of a tool result.
 MAX_PUBLIC_RESULT_BYTES = 16 * 1024
-
-_FAILED = {"code": "tool_failed"}
 
 
 @dataclass(frozen=True)
@@ -34,10 +32,6 @@ class Tool:
     description: str  # shown to the model
     input_model: type[BaseModel]
     handler: Callable[[Any], Any]  # receives an input_model; returns a dict or a BaseModel
-
-
-def _failure() -> ToolOutcome:
-    return ToolOutcome(status="error", result=dict(_FAILED), public_result=dict(_FAILED))
 
 
 class ToolRegistry:
@@ -71,18 +65,18 @@ class ToolRegistry:
         tool = self._tools.get(tool_id)
         if tool is None or raw_input is None:
             logger.warning("tool_failed", tool=tool_id, reason="unknown_tool" if tool is None else "input_not_json")
-            return _failure()
+            return tool_failed()
         try:
             arguments = tool.input_model.model_validate(raw_input)
         except Exception as exc:  # noqa: BLE001 - the model's input is untrusted
             logger.warning("tool_failed", tool=tool_id, reason="invalid_input", error=type(exc).__name__)
-            return _failure()
+            return tool_failed()
         try:
             output = tool.handler(arguments)
             result = output.model_dump(mode="json") if isinstance(output, BaseModel) else output
             encoded = json.dumps(result)
         except Exception:  # noqa: BLE001 - a tool is third-party code from this layer's point of view
             logger.exception("tool_failed", tool=tool_id, reason="handler_error")
-            return _failure()
+            return tool_failed()
         public = result if len(encoded.encode()) <= MAX_PUBLIC_RESULT_BYTES else {"truncated": True}
         return ToolOutcome(status="success", result=result, public_result=public)

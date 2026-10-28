@@ -30,7 +30,7 @@ def test_an_idle_stream_gets_a_ping_comment_before_its_first_event_and_the_ping_
 
     @slow.get("/slow", response_class=EventSourceResponse)
     async def stream() -> AsyncIterator[ServerSentEvent]:
-        await asyncio.sleep(0.4)  # the agent is thinking: nothing to say yet
+        await asyncio.sleep(1)  # the agent is thinking: nothing to say yet (20x the interval, so a loaded runner still pings)
         yield ServerSentEvent(event="done", data={"ok": True})
 
     with TestClient(slow).stream("GET", "/slow") as response:

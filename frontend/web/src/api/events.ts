@@ -1,6 +1,8 @@
 /** The events of one conversation turn, as the API streams them (server-sent events).
  * The vocabulary is closed and owned by the API; this file only reads it. */
 
+import { isRecord } from "./guards";
+
 export type TurnEvent =
   | { type: "delta"; text: string }
   | { type: "tool_started"; callId: string; toolId: string; label: string }
@@ -16,7 +18,6 @@ export interface SseParser {
   end(): void;
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
 const isString = (value: unknown): value is string => typeof value === "string";
 
 /** A known event with the fields it must have, or null: anything else is ignored, not an error. */

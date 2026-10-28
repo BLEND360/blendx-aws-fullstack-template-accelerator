@@ -5,7 +5,7 @@ from app.main import app
 from app.repositories.in_memory_items import InMemoryItemStore
 from app.routers import dependencies as deps
 from app.services.items import ItemService
-from conftest_api import uninstall
+from tests.api_stack import uninstall
 
 PATH = "/api/v1/items"
 

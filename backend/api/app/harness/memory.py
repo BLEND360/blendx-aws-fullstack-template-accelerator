@@ -16,7 +16,7 @@ from botocore.config import Config
 from botocore.exceptions import ClientError
 
 from app.core.config import settings
-from app.core.errors import MEMORY, AppError, MisconfiguredError, classify_aws_error
+from app.core.errors import MEMORY, MisconfiguredError, classify_aws_error
 from app.core.models import MemoryEvent, MemoryRef
 
 _PAGE = 100  # the largest ListEvents page
@@ -79,7 +79,7 @@ class AgentCoreMemory:
             )
         try:
             harness = self._factory("bedrock-agentcore-control").get_harness(harnessId=self._harness_arn.rsplit("/", 1)[-1])
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 - classified into a client-safe AppError
             raise classify_aws_error(exc, dependency=MEMORY) from exc
         configuration = harness["harness"].get("memory") or {}
         for kind in ("managedMemoryConfiguration", "agentCoreMemoryConfiguration"):
@@ -109,8 +109,8 @@ class AgentCoreMemory:
                 kwargs["nextToken"] = token
             try:
                 page = data.list_events(**kwargs)
-            except Exception as exc:  # noqa: BLE001
-                raise (exc if isinstance(exc, AppError) else classify_aws_error(exc, dependency=MEMORY)) from exc
+            except Exception as exc:  # noqa: BLE001 - classified into a client-safe AppError
+                raise classify_aws_error(exc, dependency=MEMORY) from exc
             yield from page.get("events", [])
             token = page.get("nextToken")
             if not token:
@@ -139,9 +139,7 @@ class AgentCoreMemory:
                 data.delete_event(
                     memoryId=self._memory(), actorId=memory.actor_id, sessionId=memory.runtime_session_id, eventId=event_id
                 )
-            except ClientError as exc:
-                if exc.response.get("Error", {}).get("Code") == "ResourceNotFoundException":
+            except Exception as exc:  # noqa: BLE001 - classified into a client-safe AppError
+                if isinstance(exc, ClientError) and exc.response.get("Error", {}).get("Code") == "ResourceNotFoundException":
                     continue  # deleted meanwhile (a concurrent retry): the goal is met
                 raise classify_aws_error(exc, dependency=MEMORY) from exc
-            except Exception as exc:  # noqa: BLE001
-                raise (exc if isinstance(exc, AppError) else classify_aws_error(exc, dependency=MEMORY)) from exc

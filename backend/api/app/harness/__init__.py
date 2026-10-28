@@ -1,1 +1,1 @@
-"""The harness integration layer (ST-06)."""
+"""The harness integration layer."""

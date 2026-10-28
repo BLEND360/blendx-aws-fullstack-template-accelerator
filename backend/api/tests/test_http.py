@@ -4,14 +4,16 @@ import logging
 
 import pytest
 from botocore.exceptions import ClientError
-from fastapi import Depends
+from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
 from app.core import errors
 from app.core.context import REQUEST_ID_HEADER
+from app.core.exception_handlers import register_exception_handlers
 from app.core.logging import get_logger
-from app.main import app
+from app.core.middleware import CorrelationIdMiddleware
+from app.routers import health
 from app.routers.dependencies import User, current_user
 
 ORIGIN = "http://localhost:5173"
@@ -21,6 +23,13 @@ log = get_logger("tests")
 
 class Body(BaseModel):
     count: int
+
+
+# A private app wired like app.main, so the test-only routes never reach the real one.
+app = FastAPI()
+app.add_middleware(CorrelationIdMiddleware)
+register_exception_handlers(app)
+app.include_router(health.router)
 
 
 # Test-only routes: each raises one kind of failure.
@@ -159,3 +168,11 @@ def test_classification(code, expected):
     classified = errors.classify_aws_error(exc, dependency=errors.HARNESS)
     assert classified.code == expected
     assert UPSTREAM_SECRET not in classified.message
+
+
+def test_secrets_are_redacted_inside_lists_and_nested_dicts(caplog):
+    with caplog.at_level(logging.INFO):
+        log.info("with_secrets", calls=[{"token": "t-1"}, ({"password": "p-1"},)], plain=["ok"])
+    record = next(r for r in caplog.records if r.getMessage() == "with_secrets")
+    assert record.calls == [{"token": "[redacted]"}, [{"password": "[redacted]"}]]
+    assert record.plain == ["ok"]

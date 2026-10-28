@@ -1,4 +1,5 @@
 import { messages } from "../messages";
+import { isRecord } from "./guards";
 import { session } from "./session";
 
 /** Only origin-relative API paths compile: no base URL exists to configure. */
@@ -44,9 +45,6 @@ export interface ApiRequest {
 }
 
 const REQUEST_ID_HEADER = "X-Request-Id";
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null;
 
 export function unexpectedError(status: number | null = null): ApiError {
   return new ApiError({ status, code: "unexpected_response", message: messages.unexpected, retryable: false });
@@ -126,6 +124,7 @@ async function send(path: ApiPath, request: ApiRequest, accept: string): Promise
   return response;
 }
 
+// The body is trusted to match T: the API contract is the guarantee.
 export async function apiFetch<T>(path: ApiPath, request: ApiRequest = {}): Promise<T> {
   const response = await send(path, request, "application/json");
   if (response.status === 204) return undefined as T;

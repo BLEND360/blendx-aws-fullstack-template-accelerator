@@ -1,5 +1,5 @@
 {
-  "_note": "Raw InvokeHarness event stream, one list per invocation, built from the bedrock-agentcore 2024-02-28 service model (botocore 1.43). Re-record from a deployed harness (spec harness-integration, task 7.1). The model produced tool input that is not valid JSON.",
+  "_note": "Raw InvokeHarness event stream, one list per invocation, built from the bedrock-agentcore 2024-02-28 service model (botocore 1.43). Synthetic: built from the service model; the starter harness cannot produce it. The model produced tool input that is not valid JSON.",
   "streams": [
     [
       {

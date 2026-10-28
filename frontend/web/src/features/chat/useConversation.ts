@@ -39,8 +39,8 @@ async function openConversation(): Promise<Opened> {
   return { sessionId: id, history: [] };
 }
 
-// React StrictMode runs an effect twice in development; both runs share one opening, so
-// the page does not create two conversations.
+// React StrictMode runs an effect twice in development; both runs share one opening (module-level,
+// so it outlives the effect run that started it), so the page does not create two conversations.
 let opening: Promise<Opened> | null = null;
 function shared(): Promise<Opened> {
   opening ??= openConversation().finally(() => {
@@ -57,8 +57,12 @@ export function useConversation() {
     let current = true;
     setState({ status: "loading" });
     shared().then(
-      (opened) => current && setState({ status: "ready", ...opened }),
-      (error: unknown) => current && setState({ status: "error", error: asApiError(error) }),
+      (opened) => {
+        if (current) setState({ status: "ready", ...opened });
+      },
+      (error: unknown) => {
+        if (current) setState({ status: "error", error: asApiError(error) });
+      },
     );
     return () => {
       current = false;

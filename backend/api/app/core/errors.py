@@ -36,6 +36,8 @@ TOOL = "tool"
 DATA = "data"
 AUTH = "auth"
 
+VALIDATION_MESSAGE = "The request is not valid."
+
 _LABELS = {
     HARNESS: "the assistant",
     MEMORY: "conversation history",
@@ -83,7 +85,7 @@ class ValidationFailedError(AppError):
     http_status = 422
 
     def __init__(
-        self, message: str = "The request is not valid.", *, fields: list[dict[str, str]] | None = None, **kwargs: Any
+        self, message: str = VALIDATION_MESSAGE, *, fields: list[dict[str, str]] | None = None, **kwargs: Any
     ) -> None:
         super().__init__(message, **kwargs)
         self.fields = fields or []
@@ -115,8 +117,8 @@ class ThrottledError(AppError):
     retryable = True
 
 
-class TimeoutError_(AppError):
-    # Reported as `<dependency>_unavailable`: the code list is closed (R6.2), and a
+class UpstreamTimeoutError(AppError):
+    # Reported as `<dependency>_unavailable`: the code list is closed, and a
     # caller decides on `retryable`, not on whether the cause was a timeout.
     category = "unavailable"
     http_status = 504
@@ -180,41 +182,9 @@ _CLIENT_ERRORS: dict[str, tuple[type[AppError], str]] = {
     "InternalServerException": (UnavailableError, _DOWN),
     "InternalServerError": (UnavailableError, _DOWN),
     "ModelNotReadyException": (UnavailableError, "{Label} is still warming up. Try again in a moment."),
-    "ModelTimeoutException": (TimeoutError_, "{Label} took too long to respond."),
-    "RequestTimeout": (TimeoutError_, "{Label} took too long to respond."),
+    "ModelTimeoutException": (UpstreamTimeoutError, "{Label} took too long to respond."),
+    "RequestTimeout": (UpstreamTimeoutError, "{Label} took too long to respond."),
 }
-
-
-def classify_aws_error(exc: BaseException, *, dependency: str) -> AppError:
-    """Translate a boto3/botocore failure into a typed, client-safe error.
-
-    Anything unrecognized becomes a generic 502 rather than escaping untyped,
-    which is what used to leak its message.
-    """
-    if isinstance(exc, AppError):
-        return exc
-    label = _LABELS.get(dependency, dependency)
-    fmt = {"label": label, "Label": label[:1].upper() + label[1:]}
-
-    if isinstance(exc, ClientError):
-        code = str(exc.response.get("Error", {}).get("Code", ""))
-        if code in _STREAM_ERRORS:  # botocore raises an in-stream error event as a ClientError
-            return classify_stream_error(code, detail=f"{code}: {exc}", dependency=dependency)
-        cls, sentence = _CLIENT_ERRORS.get(code, (AppError, "{Label} returned an unexpected error."))
-        return cls(sentence.format(**fmt), dependency=dependency, detail=f"{code}: {exc}")
-    if isinstance(exc, (ConnectTimeoutError, ReadTimeoutError)):
-        return TimeoutError_("{Label} took too long to respond.".format(**fmt), dependency=dependency, detail=str(exc))
-    if isinstance(exc, HTTPClientError):  # the response stream broke mid-way (reset, closed)
-        return UnavailableError("{Label} could not be reached.".format(**fmt), dependency=dependency, detail=str(exc))
-    if isinstance(exc, (EndpointConnectionError, BotoConnectionError)):
-        return UnavailableError("{Label} could not be reached.".format(**fmt), dependency=dependency, detail=str(exc))
-    if isinstance(exc, NoCredentialsError):
-        return MisconfiguredError(
-            "The service is not configured to reach {label}.".format(**fmt), dependency=dependency, detail=str(exc)
-        )
-    detail = str(exc) if isinstance(exc, BotoCoreError) else f"{type(exc).__name__}: {exc}"
-    return AppError("{Label} returned an unexpected error.".format(**fmt), dependency=dependency, detail=detail)
-
 
 # Failures that arrive as events inside an already-open response stream, so they are
 # not ClientErrors. Same rule as everywhere: a fixed sentence, the original text only in `detail`.
@@ -225,11 +195,41 @@ _STREAM_ERRORS: dict[str, tuple[type[AppError], str]] = {
 }
 
 
-def classify_stream_error(event: str, *, detail: str | None = None, dependency: str = HARNESS) -> AppError:
+def _fmt(dependency: str) -> dict[str, str]:
     label = _LABELS.get(dependency, dependency)
-    fmt = {"label": label, "Label": label[:1].upper() + label[1:]}
+    return {"label": label, "Label": label[:1].upper() + label[1:]}
+
+
+def classify_aws_error(exc: BaseException, *, dependency: str) -> AppError:
+    """Translate a boto3/botocore failure into a typed, client-safe error.
+
+    Anything unrecognized becomes a generic 502 rather than escaping untyped.
+    """
+    if isinstance(exc, AppError):
+        return exc
+    fmt = _fmt(dependency)
+
+    if isinstance(exc, ClientError):
+        code = str(exc.response.get("Error", {}).get("Code", ""))
+        if code in _STREAM_ERRORS:  # botocore raises an in-stream error event as a ClientError
+            return classify_stream_error(code, detail=f"{code}: {exc}", dependency=dependency)
+        cls, sentence = _CLIENT_ERRORS.get(code, (AppError, "{Label} returned an unexpected error."))
+        return cls(sentence.format(**fmt), dependency=dependency, detail=f"{code}: {exc}")
+    if isinstance(exc, (ConnectTimeoutError, ReadTimeoutError)):
+        return UpstreamTimeoutError("{Label} took too long to respond.".format(**fmt), dependency=dependency, detail=str(exc))
+    if isinstance(exc, (HTTPClientError, EndpointConnectionError, BotoConnectionError)):  # HTTPClientError: stream reset
+        return UnavailableError("{Label} could not be reached.".format(**fmt), dependency=dependency, detail=str(exc))
+    if isinstance(exc, NoCredentialsError):
+        return MisconfiguredError(
+            "The service is not configured to reach {label}.".format(**fmt), dependency=dependency, detail=str(exc)
+        )
+    detail = str(exc) if isinstance(exc, BotoCoreError) else f"{type(exc).__name__}: {exc}"
+    return AppError("{Label} returned an unexpected error.".format(**fmt), dependency=dependency, detail=detail)
+
+
+def classify_stream_error(event: str, *, detail: str | None = None, dependency: str = HARNESS) -> AppError:
     cls, sentence = _STREAM_ERRORS.get(event, (AppError, "{Label} returned an unexpected error."))
-    return cls(sentence.format(**fmt), dependency=dependency, detail=detail)
+    return cls(sentence.format(**_fmt(dependency)), dependency=dependency, detail=detail)
 
 
 def error_payload(*, code: str, message: str, retryable: bool = False, **extra: Any) -> dict[str, Any]:

@@ -6,9 +6,9 @@ a memory id, an actor, an owner) is not a field here and is dropped on parse.
 """
 
 from fastapi import APIRouter, Depends, Response
-from pydantic import BaseModel, ConfigDict
-from pydantic.alias_generators import to_camel
+from pydantic import ConfigDict
 
+from app.core.camel import CamelModel
 from app.core.models import SessionRecord
 from app.routers.dependencies import (
     User,
@@ -25,16 +25,10 @@ from app.services.sessions import SessionService
 router = APIRouter(prefix="/api/v1/sessions", tags=["sessions"])
 
 
-class _Camel(BaseModel):
-    """Responses: camelCase on the wire, built in code with the Python names."""
-
-    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
-
-
-class SessionOverrides(_Camel):
+class SessionOverrides(CamelModel):
     """What a client may choose. Unknown fields are ignored, not rejected: they never get used."""
 
-    model_config = ConfigDict(alias_generator=to_camel, extra="ignore")
+    model_config = ConfigDict(extra="ignore")
 
     model_id: str | None = None
     tool_ids: list[str] | None = None
@@ -48,18 +42,18 @@ class SessionOverrides(_Camel):
         )
 
 
-class ToolView(_Camel):
+class ToolView(CamelModel):
     id: str
     label: str
 
 
-class ConfigView(_Camel):
+class ConfigView(CamelModel):
     model_id: str
     tool_ids: list[str]
     tools: list[ToolView]
 
 
-class SessionView(_Camel):
+class SessionView(CamelModel):
     """A session as a client sees it: no owner, no memory coordinates, no revision."""
 
     id: str
@@ -68,17 +62,17 @@ class SessionView(_Camel):
     config: ConfigView
 
 
-class SessionList(_Camel):
+class SessionList(CamelModel):
     sessions: list[SessionView]
 
 
-class MessageView(_Camel):
+class MessageView(CamelModel):
     role: str
     text: str
     created_at: str
 
 
-class HistoryView(_Camel):
+class HistoryView(CamelModel):
     messages: list[MessageView]
 
 

@@ -8,7 +8,9 @@ import type { ChatItem, ChatState } from "./chatState";
 export function useChat(sessionId: string, initial: ChatItem[], onSessionGone: () => void) {
   const [state, dispatch] = useReducer(chatReducer, initial, emptyChat);
   const stateRef = useRef<ChatState>(state);
-  stateRef.current = state;
+  useEffect(() => {
+    stateRef.current = state;
+  });
   const controller = useRef<AbortController | null>(null);
   const counter = useRef(0);
 

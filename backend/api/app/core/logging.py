@@ -30,6 +30,8 @@ def _redact(key: str, value: Any) -> Any:
         return "[redacted]"
     if isinstance(value, dict):
         return {k: _redact(k, v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_redact(key, v) for v in value]
     return value
 
 

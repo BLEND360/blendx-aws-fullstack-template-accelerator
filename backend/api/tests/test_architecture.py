@@ -1,4 +1,4 @@
-"""R8.4: the API depends on nothing in the starter harness project, and the layering rules stay in force."""
+"""The API depends on nothing in the starter harness project, and the layering rules stay in force."""
 
 import tomllib
 from pathlib import Path

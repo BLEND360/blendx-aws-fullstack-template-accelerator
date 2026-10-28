@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.routers import dependencies as deps
-from tests.conftest_api import install, uninstall
+from tests.api_stack import install, uninstall
 
 # The only things a client may send: text, and a choice of model and tools.
 CLIENT_MAY_SEND = {"text", "modelId", "toolIds"}

@@ -40,13 +40,12 @@ from app.core.models import (
     ToolStarted,
     TurnEnded,
     TurnEvent,
+    tool_failed,
 )
 from app.services.ports import HarnessPort, SessionStore, ToolPort
 from app.services.sessions import NOT_FOUND
 
 logger = get_logger(__name__)
-
-_TOOL_FAILED = {"code": "tool_failed"}
 
 
 @dataclass(frozen=True)
@@ -65,9 +64,7 @@ class TurnService:
     def prepare(self, owner_id: str, session_id: str, text: str) -> PreparedTurn:
         """Everything that can be refused as an ordinary HTTP error, before a stream exists."""
         if not text.strip():
-            raise ValidationFailedError(
-                "The request is not valid.", fields=[{"location": "body.text", "message": "Message is empty."}]
-            )
+            raise ValidationFailedError(fields=[{"location": "body.text", "message": "Message is empty."}])
         record = self._store.get(owner_id, session_id)
         if record is None:
             raise NotFoundError(NOT_FOUND)
@@ -143,6 +140,6 @@ class TurnService:
         if call.name not in enabled:
             # Unknown, or known but not enabled for this session: the model gets a failure and carries on.
             logger.warning("tool_failed", tool=call.name, reason="not_enabled_for_session")
-            return ToolOutcome("error", dict(_TOOL_FAILED), dict(_TOOL_FAILED))
+            return tool_failed()
         # Off the event loop: a handler may block. The thread inherits the request id.
         return await asyncio.to_thread(self._tools.run, call.name, call.input)

@@ -1,8 +1,8 @@
 """A stand-in for AgentCore, for tests and for running the app with no AWS.
 
-ReplayInvoker plays recorded raw streams where BotoInvoker would call
+ReplayInvoker (tests only) plays recorded raw streams where BotoInvoker would call
 InvokeHarness, so the real translator, filter and error mapping run on them.
-FakeMemory is the harness's memory held in a dict.
+FakeMemory, the harness's memory held in a dict, also backs the app's replay mode.
 """
 
 from collections.abc import Iterator, Sequence

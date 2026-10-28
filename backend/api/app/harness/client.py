@@ -17,7 +17,7 @@ import boto3
 from botocore.config import Config
 
 from app.core.config import settings
-from app.core.errors import HARNESS, AppError, classify_aws_error
+from app.core.errors import HARNESS, classify_aws_error
 from app.core.logging import get_logger
 from app.core.models import HarnessEvent, HarnessMessage, HarnessRequest
 from app.harness.text_filter import MarkerFilter
@@ -165,7 +165,7 @@ class AgentCoreHarness:
                 # A failure of the call itself (denied, throttled, not found) is a ClientError here;
                 # the translator already classified anything that happened while reading the stream.
                 if not cancelled.is_set():
-                    put(("error", exc if isinstance(exc, AppError) else classify_aws_error(exc, dependency=HARNESS)))
+                    put(("error", classify_aws_error(exc, dependency=HARNESS)))
             finally:
                 if streams:
                     _close_quietly(streams[0])

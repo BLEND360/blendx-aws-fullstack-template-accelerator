@@ -147,6 +147,11 @@ class ToolOutcome:
     public_result: dict[str, Any]  # what the browser sees: redacted and bounded
 
 
+def tool_failed() -> ToolOutcome:
+    """The one outcome of a tool that did not run: the model and the browser get the same bare code."""
+    return ToolOutcome(status="error", result={"code": "tool_failed"}, public_result={"code": "tool_failed"})
+
+
 # --- What the router serializes to SSE --------------------------------------
 @dataclass(frozen=True)
 class Delta:

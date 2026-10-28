@@ -73,8 +73,9 @@ on purpose:
    the router turns any `TurnEvent` into `event:` + camelCase `data:`.
 3. Update the tests that pin it: [`tests/test_event_vocabulary.py`](tests/test_event_vocabulary.py)
    (the list of six names) and the stream assertions in [`tests/test_turns_api.py`](tests/test_turns_api.py).
-4. Tell whoever consumes the stream (the chat UI, and the conformance tests of ST-10): it is
-   their contract too.
+4. Tell whoever consumes the stream (the chat UI, and the contract tests `tests/test_sse_contract.py` and
+   `frontend/web/src/api/sseContract.test.ts`, which share `contract/sse-turns.json`): it is their contract
+   too. Add the event to that fixture as well; see [`contract/README.md`](../../contract/README.md).
 
 ## What never crosses to the client
 
@@ -96,18 +97,23 @@ Set `harness.arn` and `harness.endpoint` in `project.toml` (and list the models 
 and `HARNESS_ENDPOINT`. No code changes. The task role needs `InvokeHarness` on the harness,
 `GetHarness` on it, and `ListEvents`/`DeleteEvent` on its memory; the statements are in
 [`infra/definitions/roles.py`](../../infra/definitions/roles.py) (`invoke_harness`, `get_harness`,
-`harness_memory`, scoped to the harness and its memory) and `AppStack` attaches them to the task role; `scripts/deploy_app.py` resolves the harness and memory ARNs they are scoped to.
+`harness_memory`, scoped to the harness and its memory).
 
-Behind CloudFront. A turn can be silent for a long time while the agent thinks, and CloudFront closes a connection after
+`AppStack` attaches them to the task role, and `scripts/deploy_app.py` resolves the harness and memory ARNs they
+are scoped to.
+
+Known limitation: this has not been tested against a harness that has tools of its own (the starter harness has
+none). When a session has local tools the call sends a `tools` list, and AgentCore documents that list as
+overriding the harness's own tools. With no local tools nothing is sent and the harness keeps its own.
+
+## Behind CloudFront
+
+A turn can be silent for a long time while the agent thinks, and CloudFront closes a connection after
 60 seconds without a byte (the origin response timeout `AppStack` sets). `EventSourceResponse` writes a `: ping` SSE
 comment, which a client does not see as an event, whenever the stream has been idle for 15 seconds, and that is what keeps
 a long turn open. The backend adds nothing of its own; `tests/test_sse_keepalive.py` pins the two facts this relies on (the
 interval stays well inside CloudFront's window, and the turn endpoint is served by `EventSourceResponse`), so a FastAPI
 upgrade that changed either would fail CI.
-
-Still open (the starter harness has no tools of its own, so it could not be tested): when a session
-has local tools the call sends a `tools` list, and AgentCore documents that list as overriding the
-harness's own tools. With no local tools nothing is sent and the harness keeps its own.
 
 ## Slow turn or hung turn
 

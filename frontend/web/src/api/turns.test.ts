@@ -102,7 +102,7 @@ test("aborting while the stream is open rejects with the abort", async () => {
   fetchMock.mockImplementation((_url, init) => Promise.resolve(hangingResponse(sseBlock("delta", { text: "a" }), init?.signal)));
   const events: TurnEvent[] = [];
   const pending = streamTurn("s1", "hi", controller.signal, (e) => events.push(e));
-  await new Promise((r) => setTimeout(r, 10));
+  await vi.waitFor(() => expect(events).toHaveLength(1));
   controller.abort();
   await expect(pending).rejects.toMatchObject({ name: "AbortError" });
   expect(events).toEqual([{ type: "delta", text: "a" }]);

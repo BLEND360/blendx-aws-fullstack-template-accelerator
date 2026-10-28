@@ -50,9 +50,7 @@ def resolve(
     problems: list[dict[str, str]] = []
 
     model_id = base.model_id
-    if isinstance(overrides.model_id, _Unset):
-        pass
-    else:
+    if not isinstance(overrides.model_id, _Unset):
         model_id = frozen.model_id if overrides.model_id is None else overrides.model_id
         if model_id not in allowed_model_ids:
             problems.append({"location": "body.modelId", "message": "Model is not allowed."})
@@ -68,5 +66,5 @@ def resolve(
         )
 
     if problems:
-        raise ValidationFailedError("The request is not valid.", fields=problems)
+        raise ValidationFailedError(fields=problems)
     return SessionConfig(values=RuntimeValues(model_id=model_id, tool_ids=tool_ids), frozen_defaults=frozen)

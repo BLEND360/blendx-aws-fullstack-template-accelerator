@@ -5,6 +5,8 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
+from botocore.eventstream import EventStreamError
+
 _DIR = Path(__file__).parent
 
 
@@ -19,8 +21,6 @@ _STREAM_ERROR_EVENTS = ("internalServerException", "validationException", "runti
 def replay(events: list[dict[str, Any]]) -> Iterator[dict[str, Any]]:
     """Yield a recorded stream the way botocore delivers it: an error event is raised
     as an EventStreamError (a ClientError) at that point of the iteration, not yielded."""
-    from botocore.eventstream import EventStreamError
-
     for event in events:
         (name, body), = event.items()
         if name in _STREAM_ERROR_EVENTS:

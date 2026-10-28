@@ -21,7 +21,14 @@ import { useChat } from "./useChat";
 import { useConversation } from "./useConversation";
 
 // Visible to assistive technology only: announcements that must not move the focus or clutter the screen.
-const VISUALLY_HIDDEN = { position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap" } as const;
+const VISUALLY_HIDDEN = {
+  position: "absolute",
+  width: 1,
+  height: 1,
+  overflow: "hidden",
+  clip: "rect(0 0 0 0)",
+  whiteSpace: "nowrap",
+} as const;
 
 function Bubble({ item, streaming }: { item: Extract<ChatItem, { kind: "user" | "assistant" }>; streaming: boolean }) {
   const mine = item.kind === "user";
@@ -42,7 +49,7 @@ function Bubble({ item, streaming }: { item: Extract<ChatItem, { kind: "user" | 
 
 const SUGGESTION_ICONS = [<FileSearchOutlined />, <WarningOutlined />, <ClockCircleOutlined />, <QuestionCircleOutlined />];
 
-function Welcome({ disabled, onPick }: { disabled: boolean; onPick: (text: string) => void }) {
+function Welcome({ onPick }: { onPick: (text: string) => void }) {
   return (
     <div className="chat-welcome">
       <span className="chat-halo" aria-hidden>
@@ -52,9 +59,9 @@ function Welcome({ disabled, onPick }: { disabled: boolean; onPick: (text: strin
       <p>{messages.chatEmpty}</p>
       <div className="chat-suggestions">
         {messages.chatSuggestions.map((text, index) => (
-          <button key={text} type="button" className="chat-suggestion" disabled={disabled} onClick={() => onPick(text)}>
+          <button key={text} type="button" className="chat-suggestion" onClick={() => onPick(text)}>
             <span className="chat-suggestion-icon" aria-hidden>
-              {SUGGESTION_ICONS[index]}
+              {SUGGESTION_ICONS[index % SUGGESTION_ICONS.length]}
             </span>
             {text}
           </button>
@@ -92,7 +99,7 @@ function Conversation(props: { sessionId: string; history: ChatItem[]; forget: (
 
   // Keep the newest text in view as it grows.
   useEffect(() => {
-    bottom.current?.scrollIntoView?.({ block: "end" });
+    bottom.current?.scrollIntoView({ block: "end" });
   }, [state.items, state.turn]);
 
   // "Responding" while a turn runs, "Response complete" when it ends well; a failure announces itself as an alert.
@@ -112,7 +119,7 @@ function Conversation(props: { sessionId: string; history: ChatItem[]; forget: (
       </div>
       <div className="chat-scroll">
         <div className="chat-log" role="log" aria-live="off" aria-busy={streaming} aria-label={messages.chatTitle}>
-          {state.items.length === 0 && !streaming && <Welcome disabled={streaming} onPick={send} />}
+          {state.items.length === 0 && !streaming && <Welcome onPick={send} />}
           {state.items.map((item, index) =>
             item.kind === "tool" ? (
               <ToolCard key={item.callId} item={item} />
@@ -180,7 +187,7 @@ export function ChatPage({ replayMode }: ChatPageProps) {
           <>
             <div className="chat-scroll">{state.status === "loading" && <LoadingIndicator />}</div>
             <div className="chat-dock">
-              <Composer disabled onSend={() => {}} /> {/* loading or failed: nothing can be sent yet */}
+              <Composer disabled />
               <p className="chat-disclaimer">{messages.chatDisclaimer}</p>
             </div>
           </>

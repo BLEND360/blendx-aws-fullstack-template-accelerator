@@ -1,4 +1,4 @@
-"""Error taxonomy for memory, in-stream failures, not-found and validation (ST-06)."""
+"""Error taxonomy for memory, in-stream failures, not-found and validation."""
 
 import pytest
 from botocore.exceptions import ClientError, ReadTimeoutError
@@ -75,7 +75,7 @@ def test_a_response_stream_that_breaks_is_retryable_unavailability():
 
 
 def test_a_read_timeout_is_an_availability_error_not_a_new_code():
-    # R6.2 closes the list of codes: a timeout is reported as `<dependency>_unavailable`.
+    # The list of codes is closed: a timeout is reported as `<dependency>_unavailable`.
     exc = ReadTimeoutError(endpoint_url="https://example.invalid")
     classified = errors.classify_aws_error(exc, dependency=errors.HARNESS)
     assert (classified.code, classified.http_status, classified.retryable) == ("harness_unavailable", 504, True)

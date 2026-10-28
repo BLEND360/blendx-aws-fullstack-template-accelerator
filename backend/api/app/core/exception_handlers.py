@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
 
 from app.core.context import REQUEST_ID_HEADER, get_request_id
-from app.core.errors import AppError, error_payload, internal_error_payload
+from app.core.errors import VALIDATION_MESSAGE, AppError, error_payload, internal_error_payload
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -62,9 +62,7 @@ async def _validation_error(request: Request, exc: RequestValidationError) -> JS
         {"location": ".".join(map(str, e.get("loc", ()))), "message": e.get("msg", "invalid value")}
         for e in exc.errors()
     ]
-    return _json(
-        422, error_payload(code="validation_error", message="The request payload is not valid.", fields=fields)
-    )
+    return _json(422, error_payload(code="validation_error", message=VALIDATION_MESSAGE, fields=fields))
 
 
 async def _unexpected_error(request: Request, exc: Exception) -> JSONResponse:

@@ -8,9 +8,9 @@ from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.clients.aws import table
-from app.core.config import settings
 from app.clients.cognito import CognitoVerifier
 from app.clients.session_tokens import SessionTokenCodec
+from app.core.config import settings
 from app.core.errors import AUTH, ForbiddenError, InvalidTokenError
 from app.core.logging import get_logger
 from app.harness.client import AgentCoreHarness, BotoInvoker, RawInvoker

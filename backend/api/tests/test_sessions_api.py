@@ -9,7 +9,7 @@ from app.core.context import REQUEST_ID_HEADER
 from app.core.errors import ConflictError, UnavailableError
 from app.main import app
 from app.routers import dependencies as deps
-from tests.conftest_api import install, uninstall, walk_strings
+from tests.api_stack import install, uninstall, walk_strings
 
 
 @pytest.fixture

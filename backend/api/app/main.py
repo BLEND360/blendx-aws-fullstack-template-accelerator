@@ -12,7 +12,6 @@ from app.routers import auth, configuration, health, items, sessions, turns
 logger = get_logger(__name__)
 
 
-
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     if not settings.use_dynamodb:

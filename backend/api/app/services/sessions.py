@@ -9,25 +9,17 @@ import hashlib
 import uuid
 from collections.abc import Callable, Sequence
 from dataclasses import replace
-from datetime import UTC, datetime
 
 from app.core.errors import AppError, NotFoundError
 from app.core.logging import get_logger
-from app.core.models import MemoryRef, SessionRecord
+from app.core.models import MemoryRef, RuntimeValues, SessionRecord
+from app.core.stamps import new_id, utc_now
 from app.services.ports import MemoryPort, SessionStore, ToolPort
 from app.services.runtime_config import Overrides, resolve, template_defaults
 
 logger = get_logger(__name__)
 
 NOT_FOUND = "Session not found."
-
-
-def _utc_now() -> str:
-    return datetime.now(UTC).isoformat()
-
-
-def _new_id() -> str:
-    return uuid.uuid4().hex
 
 
 class SessionService:
@@ -38,19 +30,20 @@ class SessionService:
         tools: ToolPort,
         *,
         allowed_model_ids: Sequence[str],
-        now: Callable[[], str] = _utc_now,
-        new_id: Callable[[], str] = _new_id,
+        now: Callable[[], str] = utc_now,
+        new_id: Callable[[], str] = new_id,
     ) -> None:
         self._store, self._memory, self._tools = store, memory, tools
         self._allowed = list(allowed_model_ids)
         self._now, self._new_id = now, new_id
 
-    def _defaults(self):
+    def _defaults(self) -> RuntimeValues:
         return template_defaults(self._allowed, sorted(self._tools.ids()))
 
     @staticmethod
     def _memory_ref(owner_id: str, new_id: Callable[[], str]) -> MemoryRef:
         # Both satisfy AgentCore's patterns: a runtime session id is 33-100 characters.
+        # The random suffix keeps it above 33 even when a caller injects a short `new_id`.
         return MemoryRef(
             runtime_session_id="s-" + new_id() + uuid.uuid4().hex[:2],
             actor_id="u-" + hashlib.sha256(owner_id.encode()).hexdigest()[:32],

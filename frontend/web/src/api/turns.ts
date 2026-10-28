@@ -32,12 +32,12 @@ export async function streamTurn(
   });
 
   const reader = response.body.getReader();
-  // `stream: true` keeps a character that was split across two chunks until the rest arrives.
   const decoder = new TextDecoder();
   try {
     while (!end) {
       const { done, value } = await reader.read();
       if (done) break;
+      // `stream: true` keeps a character split across two chunks until the rest arrives.
       parser.push(decoder.decode(value, { stream: true }));
     }
     if (!end) parser.push(decoder.decode());

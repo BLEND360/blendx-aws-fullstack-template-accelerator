@@ -10,7 +10,7 @@ from app.core.context import REQUEST_ID_HEADER
 from app.core.models import TURN_EVENT_NAMES
 from app.harness.fake import ReplayInvoker
 from app.main import app
-from tests.conftest_api import ARN, install, uninstall, walk_strings
+from tests.api_stack import ARN, install, uninstall, walk_strings
 from tests.test_client import LoggingInvoker
 
 TERMINAL = {"done", "error"}
