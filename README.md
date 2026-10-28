@@ -1,8 +1,9 @@
 # blendx-fullstack-aws-template
 
 One repository a team clones to get a deployed, authenticated fullstack app on
-AWS whose business logic already calls an AgentCore harness. Set four values in
-`project.toml`, push, and an agent is responding on a private AWS topology.
+AWS whose business logic already calls an AgentCore harness. Set the values in
+`project.toml`, run `uv run --project infra python scripts/deploy.py --env dev`, and an agent is
+responding on a private AWS topology.
 
 Tracking issue: [BLEND360/blendx-core#1144](https://github.com/BLEND360/blendx-core/issues/1144).
 
@@ -14,7 +15,7 @@ Tracking issue: [BLEND360/blendx-core#1144](https://github.com/BLEND360/blendx-c
 | Agent integration | Invoke a harness, stream the answer as SSE, dispatch tools; no AWS error message ever reaches the browser |
 | Starter harness | A model plus managed memory, deployed with the `agentcore` CLI. Point at an existing harness by setting `harness.arn` and `harness.endpoint` |
 | Infrastructure | CDK (Python) for network, identity, data, compute, CDN |
-| CI/CD | GitHub Actions with OIDC. No long-lived AWS keys |
+| CI/CD | GitHub Actions checks pull requests and deploys from `main` with OIDC; PRs from this repository also get a read-only CDK diff |
 
 ```
 CloudFront (only public entry)
@@ -31,10 +32,11 @@ Dockerfile            # API image (build context: repo root)
 docker-compose.yml    # run that image locally
 backend/api/          # FastAPI service — add sibling services here
 frontend/web/         # Vite + React SPA — add sibling UIs here
-harness/              # starter harness: model + managed memory
+harness/              # starter harness: model + managed memory (its agentcore config is generated from project.toml
+                      # by setup.py / deploy_harness.py and git-ignored)
 infra/                # CDK app (Python), see infra/README.md
 scripts/              # setup, deploy, destroy, and the network helpers (see "Deploying to AWS")
-.github/workflows/    # ci, deploy
+.github/workflows/    # CI, CDK diff and deployment
 ```
 
 ## Quick start
@@ -46,7 +48,7 @@ and for the AWS steps the AWS CLI with credentials for the target account.
 
 ```bash
 # edit project.toml first (name, aws_account, aws_region, github_org, github_repo)
-python scripts/setup.py       # validates project.toml, writes the .env files; deletes itself
+python scripts/setup.py       # validates project.toml, writes the .env files and the harness config; deletes itself
 docker compose up --build     # web http://localhost:5173, API http://localhost:8000/health
 ```
 
@@ -104,11 +106,11 @@ uv run --project infra python scripts/deploy_harness.py
 uv run --project infra python scripts/deploy_app.py --env dev
 ```
 
-`deploy_harness.py` prints `harness_arn=...` and
-`harness_endpoint=...`; put them in `backend/api/.env` as `HARNESS_ARN` and
-`HARNESS_ENDPOINT` (or set `harness.arn` in `project.toml` to use an existing
-harness and skip the deploy). Use plain `python` for `setup.py` only: the other
-scripts need boto3, which `uv run --project infra` provides.
+`deploy_harness.py` prints `harness_arn=...` and `harness_endpoint=...`. The deployed app does not need them
+(`deploy_app.py` finds the harness itself); copy them into `backend/api/.env` as `HARNESS_ARN` and `HARNESS_ENDPOINT`
+only to run the API locally against that harness (see step 3), or set `harness.arn` in `project.toml` to use an
+existing harness and skip the deploy. Use plain `python` for `setup.py` only: the other scripts need boto3, which
+`uv run --project infra` provides.
 
 ### Network
 
@@ -163,12 +165,12 @@ Locally there is no sign-in (`LOCAL_AUTH_BYPASS=true`, you are a stand-in admin)
 
 ```bash
 uv run --project infra python scripts/deploy_auth.py                      # Cognito + writes both .env files
-uv run --project infra python scripts/create_user.py you@example.com      # prints the password; --group user for a non-admin
+uv run --project infra python scripts/create_user.py you@example.com      # asks for a password (hidden; empty generates one); --group user for a non-admin
 ```
 
 `deploy_auth.py` writes `COGNITO_*` and `VITE_COGNITO_*` into the `.env` files, makes sure `AUTH_JWT_SECRET`
 exists and sets `LOCAL_AUTH_BYPASS=false` (set it back to `true` to skip sign-in locally). Restart the API and
-the web app, open http://localhost:5173 and sign in. Nothing is copied by hand.
+the web app, open http://localhost:5173 and sign in. No sign-in value is copied by hand.
 
 Groups become the API's roles (`admin`, `user`); nobody can self sign-up, so users come from `create_user.py`.
 The API trades Cognito's id token for its own 1-hour session credential (`POST /auth/login`); there is no silent
@@ -184,7 +186,7 @@ credentials in `~/.aws`, and restart. `/ready` should then report `ok`.
 
 | Symptom | Cause and fix |
 |---|---|
-| `ModuleNotFoundError: boto3` | You ran `bootstrap.py`, `deploy_data.py`, `deploy_auth.py`, `create_user.py` or `deploy_harness.py` with plain `python`. Use `uv run --project infra python ...` |
+| `ModuleNotFoundError: boto3` | You ran `bootstrap.py`, `deploy_data.py`, `deploy_auth.py`, `deploy_app.py`, `create_user.py` or `deploy.py` with plain `python`. Use `uv run --project infra python ...` |
 | "Your credentials are for account X, but project.toml says Y" | Wrong profile or `aws_account` in `project.toml`. Fix one and retry |
 | `Your session has expired ... Please reauthenticate using 'aws login'` (API logs, `/ready` degraded with `data_error`) | Run `aws login` (or `aws sso login`), then restart the API |
 | `OSError: [Errno 30] Read-only file system` in the container after `aws login` | `docker compose` mounts `~/.aws` read-only; credentials from `aws login` need it writable. Add a git-ignored `docker-compose.override.yml` that mounts `~/.aws` without `:ro` |
@@ -198,13 +200,30 @@ credentials in `~/.aws`, and restart. `/ready` should then report `ok`.
 | A repeat of `deploy_app.py` redeploys the service although nothing changed | The image tag follows the image's layers; a build that changed a layer (new base image, `uv.lock`) is a new version. Same sources and cache give the same tag |
 | `aws logs ... /name/api` says the log group name is invalid (Git Bash) | Git Bash rewrites arguments that start with `/`. Run `export MSYS_NO_PATHCONV=1` first |
 | The site returns the entry page, or a 403, right after the first deploy | CloudFront takes a few minutes to propagate; try again in two or three |
-| `setup.py` says "already complete" | Both `.env` files exist; delete them to regenerate (`setup.py` removes itself after the first run) |
+| `setup.py` says "already complete" | Both `.env` files already exist, so it changed nothing. Delete them to regenerate. `setup.py` deletes itself after a successful run, so after that it is no longer there; `git restore scripts/setup.py` brings it back |
 
-### Not built yet
+### GitHub Actions
 
-The deploy workflow (ST-09): `git push` runs CI but does not deploy yet, so deploying is `scripts/deploy.py` from a
-machine with credentials. `bootstrap.py` prints two GitHub variables to set (`AWS_DEPLOY_ROLE_ARN`, `AWS_REGION`);
-they are used once the workflow exists.
+`.github/workflows/ci.yml` runs API, infrastructure and web checks on pull requests. Same-repository PRs also
+get a read-only `cdk diff --method=template`; forks run the checks without AWS access. A push to `main` runs
+`.github/workflows/deploy.yml` after CI succeeds. It deploys roles, sign-in, data and harness, then updates the
+API image, app stack, SPA and public health check. A manual run can choose `dev` or `prod`.
+
+Before enabling the workflow, run `uv run --project infra python scripts/bootstrap.py` once from a machine with
+AWS credentials for the account in `project.toml`. It bootstraps CDK, creates the GitHub OIDC provider if needed,
+deploys the roles and prints the `gh variable set` commands. Create GitHub Environments `dev` and `prod` first,
+then set `AWS_DIFF_ROLE_ARN` and `AWS_REGION` as repository variables, plus `AWS_DEPLOY_ROLE_ARN` and
+`AWS_REGION` in each Environment. Restrict both Environments to branch `main`; require reviewers for `prod` and
+none for `dev`.
+
+The deploy role's OIDC trust requires a configured Environment and `refs/heads/main`. The PR role can read the
+project's deployment inputs and assume only CDK's lookup role; it cannot deploy or publish resources. No AWS
+access keys belong in GitHub secrets. Until ST-12 supports a separate AWS account per environment, all configured
+Environments must point to the account in `project.toml`.
+
+On the first deployment, the app's CloudFront URL may be added to `[auth].callback_urls` in `project.toml`.
+The workflow then stops and prints that change; commit it and rerun the deployment. The harness CDK tests
+(`harness/agentcore/cdk/test/`) are not run by CI.
 
 ## Architecture
 
@@ -245,7 +264,7 @@ environment) so a template-born harness can graduate into the Hub unchanged.
 | Add a table | an entry in `infra/definitions/tables.py`, a `repositories/x.py` | `infra/stacks/` |
 | Grant a permission | an entry in `infra/definitions/roles.py` | `infra/stacks/` |
 | Change the model / use an existing harness | `project.toml` | any code |
-| Add a service or UI | a sibling folder under `backend/` or `frontend/` + a CI path filter | the existing ones |
+| Add a service or UI | a sibling folder under `backend/` or `frontend/` + a CI job for it (`ci.yml` has no path filters; if you add them, include `contract/**`) | the existing ones |
 
 ### Out of scope for v1
 
