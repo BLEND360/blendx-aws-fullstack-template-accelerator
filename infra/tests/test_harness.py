@@ -1,6 +1,7 @@
 import dataclasses
 import importlib.util
 import json
+import sys
 from pathlib import Path
 
 import aws_cdk as cdk
@@ -11,13 +12,15 @@ import config
 import harness_files
 from definitions.roles import role_specs
 from stacks.roles import RolesStack
+from tests.conftest import fixed_config
 
 ROOT = Path(__file__).resolve().parents[2]
-STARTER = config.load()
+STARTER = fixed_config()
 CONSUMER = dataclasses.replace(
     STARTER, harness_arn=f"arn:aws:bedrock-agentcore:{STARTER.aws_region}:{STARTER.aws_account}:harness/platform-abc"
 )
 
+sys.path.insert(0, str(ROOT / "scripts"))
 spec = importlib.util.spec_from_file_location("deploy_harness", ROOT / "scripts" / "deploy_harness.py")
 deploy_harness = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(deploy_harness)
@@ -79,12 +82,11 @@ def calls(monkeypatch, tmp_path):
         or json.dumps({"id": "h-1", "arn": "arn:h-1", "version": "3"}),
     )
     monkeypatch.setattr(harness_files, "HARNESS_DIR", tmp_path)
-    monkeypatch.delenv("GITHUB_OUTPUT", raising=False)
     return log
 
 
 def test_configured_arn_deploys_nothing(calls, monkeypatch, capsys):
-    monkeypatch.setattr(config, "load", lambda: CONSUMER)
+    monkeypatch.setattr(config, "load", lambda *_: CONSUMER)
     assert deploy_harness.main() == 0
     assert calls == []
     out = capsys.readouterr().out
@@ -93,7 +95,7 @@ def test_configured_arn_deploys_nothing(calls, monkeypatch, capsys):
 
 
 def test_starter_deploys_in_platform_order(calls, monkeypatch, capsys):
-    monkeypatch.setattr(config, "load", lambda: STARTER)
+    monkeypatch.setattr(config, "load", lambda *_: STARTER)
     assert deploy_harness.main() == 0
     steps = [c[0] if c[0] != "agentcore" else f"agentcore {c[1]}" for c in calls]
     assert steps == [

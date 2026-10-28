@@ -1,10 +1,11 @@
 """Every IAM role the template provisions. Add a role by adding a RoleSpec to the
 list role_specs() returns; RolesStack needs no change.
 
-Later tickets extend these roles in place (the task role already holds the
-table grants, see task_role below). The harness grants (invoke_harness, get_harness,
-harness_memory) take resolved ARNs, so the app stack attaches them.
+The harness grants (invoke_harness, get_harness, harness_memory) take resolved
+ARNs, so the app stack attaches them.
 """
+
+import re
 
 from aws_cdk import aws_iam as iam
 
@@ -12,32 +13,29 @@ from config import Config
 from specs.role import RoleSpec
 
 GITHUB_OIDC_HOST = "token.actions.githubusercontent.com"
-# Default `cdk bootstrap` qualifier. Change both here and in bootstrap.py if a
-# custom one is used.
+# Default qualifier of `cdk bootstrap`.
 CDK_QUALIFIER = "hnb659fds"
+_GEO_PREFIX = re.compile(r"^(us|eu|apac|jp|au|ca|global|us-gov)\.")
 
 
-def github_oidc_principal(c: Config) -> iam.IPrincipal:
-    """Trust GitHub Actions runs from this project's repository only.
-
-    This org has GitHub's OIDC subject-claim customization enabled, which
-    injects immutable owner and repository ids into `sub`
-    ("repo:BLEND360@28543622/<repo>@1322111153:ref:refs/heads/main"), so a
-    literal "repo:BLEND360/<repo>:*" never matches and every assume fails with
-    "Not authorized to perform sts:AssumeRoleWithWebIdentity". The `*` after
-    org and repo skip over those ids. `repository` is the uncustomized claim
-    and does the real scoping; `sub` is kept because IAM rejects a GitHub OIDC
-    trust policy without a `sub` or `job_workflow_ref` condition.
-    """
+def github_oidc_principal(
+    c: Config, subject_suffix: str, *, main_only: bool = False
+) -> iam.IPrincipal:
+    """Trust one GitHub event class and this repository, accounting for org-customized subjects."""
+    equals = {
+        f"{GITHUB_OIDC_HOST}:aud": "sts.amazonaws.com",
+        f"{GITHUB_OIDC_HOST}:repository": f"{c.github_org}/{c.github_repo}",
+    }
+    if main_only:
+        # Environment-based subjects omit the branch. AWS supports `ref` as a
+        # separate GitHub OIDC condition, so enforce main in the trust policy too.
+        equals[f"{GITHUB_OIDC_HOST}:ref"] = "refs/heads/main"
     return iam.FederatedPrincipal(
         federated=f"arn:aws:iam::{c.aws_account}:oidc-provider/{GITHUB_OIDC_HOST}",
         conditions={
-            "StringEquals": {
-                f"{GITHUB_OIDC_HOST}:aud": "sts.amazonaws.com",
-                f"{GITHUB_OIDC_HOST}:repository": f"{c.github_org}/{c.github_repo}",
-            },
+            "StringEquals": equals,
             "StringLike": {
-                f"{GITHUB_OIDC_HOST}:sub": f"repo:{c.github_org}*/{c.github_repo}*:*",
+                f"{GITHUB_OIDC_HOST}:sub": f"repo:{c.github_org}*/{c.github_repo}*:{subject_suffix}"
             },
         },
         assume_role_action="sts:AssumeRoleWithWebIdentity",
@@ -82,19 +80,23 @@ def manage_harness_endpoints(c: Config) -> list[iam.PolicyStatement]:
 def invoke_harness(harness_arn: str) -> iam.PolicyStatement:
     """The task role's grant on the resolved harness, starter or configured.
 
-    Attached by the app stack (ST-07), the first stack that knows the resolved
-    ARN: the starter harness's id is assigned when it deploys, after this
-    stack. Endpoints are addressed under the harness ARN.
+    Attached by the app stack, the first to know the resolved ARN: the starter
+    harness's id is assigned when it deploys, after this stack. Endpoints are
+    addressed under the harness ARN.
+
+    Two actions: InvokeHarness runs the harness's runtime on the caller's behalf, and AgentCore authorizes that
+    second call as InvokeAgentRuntime on the same harness ARN. With only the first, every turn fails with
+    AccessDenied (seen on the first real chat), which the API reports as "no assistant is configured".
     """
     return iam.PolicyStatement(
         sid="InvokeHarness",
-        actions=["bedrock-agentcore:InvokeHarness"],
+        actions=["bedrock-agentcore:InvokeHarness", "bedrock-agentcore:InvokeAgentRuntime"],
         resources=[harness_arn, f"{harness_arn}/*"],
     )
 
 
 def get_harness(harness_arn: str) -> iam.PolicyStatement:
-    """The task role reads the resolved harness to find its memory. Attached by ST-07, like invoke_harness."""
+    """The task role reads the resolved harness to find its memory. Attached by the app stack, like invoke_harness."""
     return iam.PolicyStatement(
         sid="GetHarness",
         actions=["bedrock-agentcore:GetHarness"],
@@ -105,7 +107,7 @@ def get_harness(harness_arn: str) -> iam.PolicyStatement:
 def harness_memory(memory_arn: str) -> iam.PolicyStatement:
     """History and session deletion read and delete events in the harness's memory.
 
-    Scoped to that one memory: the app stack (ST-07) receives its ARN, resolved from the
+    Scoped to that one memory: the app stack receives its ARN, resolved from the
     harness by scripts/deploy_app.py, and attaches this, like invoke_harness.
     """
     return iam.PolicyStatement(
@@ -121,7 +123,12 @@ def deploy_role(c: Config) -> RoleSpec:
         id="GithubDeployRole",
         role_name=c.deploy_role,
         description="Assumed by GitHub Actions (OIDC) to deploy this project.",
-        assumed_by=github_oidc_principal(c),
+        assumed_by=iam.CompositePrincipal(
+            *(
+                github_oidc_principal(c, f"environment:{environment}", main_only=True)
+                for environment in c.environments
+            )
+        ),
         statements=[
             # `cdk deploy` and `agentcore deploy` reach CloudFormation through
             # the bootstrap roles, so the deploy role itself never holds
@@ -140,6 +147,44 @@ def deploy_role(c: Config) -> RoleSpec:
                     f"arn:aws:cloudformation:{region}:{account}:stack/{c.name}-*/*",
                     f"arn:aws:cloudformation:{region}:{account}:stack/{c.harness_stack}/*",
                 ],
+            ),
+            iam.PolicyStatement(
+                sid="ReadNetworkForDeploy",
+                actions=[
+                    "ec2:DescribeManagedPrefixLists",
+                    "ec2:DescribeVpcs",
+                    "ec2:DescribeSubnets",
+                    "ec2:DescribeInternetGateways",
+                    "ec2:DescribeRouteTables",
+                ],
+                resources=["*"],
+            ),
+            iam.PolicyStatement(
+                sid="ReadAppServiceForDeploy",
+                actions=["ecs:DescribeServices"],
+                resources=[f"arn:aws:ecs:{region}:{account}:service/{c.cluster}/{c.service}"],
+            ),
+            iam.PolicyStatement(
+                sid="ReadTaskDefinitionForDeploy",
+                actions=["ecs:DescribeTaskDefinition"],
+                resources=["*"],
+            ),
+            iam.PolicyStatement(
+                sid="ReadApiRepositoryForDeploy",
+                actions=["ecr:DescribeRepositories"],
+                resources=[f"arn:aws:ecr:{region}:{account}:repository/{c.ecr_repository}"],
+            ),
+            iam.PolicyStatement(
+                sid="ReadHarnessForDeploy",
+                actions=["bedrock-agentcore:GetHarness"],
+                resources=[f"arn:aws:bedrock-agentcore:{region}:{account}:harness/*"],
+            ),
+            iam.PolicyStatement(
+                sid="ReadUserPoolClientForDeploy",
+                actions=["cognito-idp:DescribeUserPoolClient"],
+                # Cognito assigns the pool ID only when the auth stack is created,
+                # after this roles stack; bound the read to this account and region.
+                resources=[f"arn:aws:cognito-idp:{region}:{account}:userpool/*"],
             ),
             iam.PolicyStatement(
                 sid="EcrLogin",
@@ -176,11 +221,69 @@ def deploy_role(c: Config) -> RoleSpec:
     )
 
 
+def diff_role(c: Config) -> RoleSpec:
+    """PRs can read deployment inputs and assume only the CDK lookup role."""
+    account, region = c.aws_account, c.aws_region
+    lookup_role = f"arn:aws:iam::{c.aws_account}:role/cdk-{CDK_QUALIFIER}-lookup-role-{c.aws_account}-{c.aws_region}"
+    return RoleSpec(
+        id="GithubDiffRole",
+        role_name=c.diff_role,
+        description="Assumed by GitHub pull requests to run read-only CDK template diffs.",
+        assumed_by=github_oidc_principal(c, "pull_request"),
+        statements=[
+            iam.PolicyStatement(
+                sid="AssumeCdkLookupRole",
+                actions=["sts:AssumeRole"],
+                resources=[lookup_role],
+            ),
+            iam.PolicyStatement(
+                sid="ReadProjectStacks",
+                actions=["cloudformation:DescribeStacks"],
+                resources=[
+                    f"arn:aws:cloudformation:{region}:{account}:stack/{c.name}-*/*",
+                    f"arn:aws:cloudformation:{region}:{account}:stack/{c.harness_stack}/*",
+                ],
+            ),
+            iam.PolicyStatement(
+                sid="ReadNetworkForDiff",
+                actions=[
+                    "ec2:DescribeManagedPrefixLists",
+                    "ec2:DescribeVpcs",
+                    "ec2:DescribeSubnets",
+                    "ec2:DescribeInternetGateways",
+                    "ec2:DescribeRouteTables",
+                ],
+                resources=["*"],
+            ),
+            iam.PolicyStatement(
+                sid="ReadHarnessForDiff",
+                actions=["bedrock-agentcore:GetHarness"],
+                resources=[f"arn:aws:bedrock-agentcore:{region}:{account}:harness/*"],
+            ),
+            iam.PolicyStatement(
+                sid="ReadServiceForDiff",
+                actions=["ecs:DescribeServices"],
+                resources=[f"arn:aws:ecs:{region}:{account}:service/{c.cluster}/{c.service}"],
+            ),
+            iam.PolicyStatement(
+                sid="ReadTaskDefinitionForDiff",
+                actions=["ecs:DescribeTaskDefinition"],
+                resources=["*"],
+            ),
+            iam.PolicyStatement(
+                sid="ReadCdkBootstrapVersion",
+                actions=["ssm:GetParameter"],
+                resources=[f"arn:aws:ssm:{region}:{account}:parameter/cdk-bootstrap/{CDK_QUALIFIER}/version"],
+            ),
+        ],
+    )
+
+
 def harness_execution_role(c: Config) -> RoleSpec:
     """Assumed by AgentCore to run the starter harness: a model and managed memory.
 
     The platform's harness role minus what tools need (gateway invoke, S3
-    skills); ST-13 adds those back when it gives the harness tools.
+    skills), which it does not need until the harness has tools.
     """
     account, region = c.aws_account, c.aws_region
     return RoleSpec(
@@ -199,12 +302,13 @@ def harness_execution_role(c: Config) -> RoleSpec:
                 sid="InvokeModels",
                 actions=["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
                 resources=[
-                    "arn:aws:bedrock:*::foundation-model/*",
-                    f"arn:aws:bedrock:{region}:{account}:inference-profile/*",
+                    # A cross-region profile (us.anthropic.X) routes to the model in any region of its geography.
+                    f"arn:aws:bedrock:*::foundation-model/{_GEO_PREFIX.sub('', c.harness_model_id)}",
+                    f"arn:aws:bedrock:{region}:{account}:inference-profile/{c.harness_model_id}",
                 ],
             ),
             # Third-party models (Anthropic included) are enabled through a
-            # Marketplace subscription the first time they are invoked.
+            # Marketplace subscription the first time they are invoked; these actions take no resource scoping.
             iam.PolicyStatement(
                 sid="SubscribeToModels",
                 actions=["aws-marketplace:ViewSubscriptions", "aws-marketplace:Subscribe"],
@@ -320,7 +424,7 @@ def task_role(c: Config) -> RoleSpec:
 
 
 def role_specs(c: Config) -> list[RoleSpec]:
-    specs = [deploy_role(c), execution_role(c), task_role(c)]
+    specs = [deploy_role(c), diff_role(c), execution_role(c), task_role(c)]
     if c.deploys_starter_harness:
         specs.append(harness_execution_role(c))
     return specs

@@ -19,11 +19,12 @@ sys.path.insert(0, str(ROOT / "infra"))
 from botocore.exceptions import ClientError  # noqa: E402
 
 import config  # noqa: E402
+from awsutil import DeployError  # noqa: E402
 
 DEFAULT_ROUTE = "0.0.0.0/0"
 
 
-class NetworkCheckError(RuntimeError):
+class NetworkCheckError(DeployError):
     pass
 
 

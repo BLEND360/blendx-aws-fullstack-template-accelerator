@@ -202,7 +202,7 @@ def test_a_vpc_with_no_free_range_stops_the_plan(c):
         planned(c, ec2)
 
 
-def test_the_plan_states_the_monthly_cost_of_the_nat(c):
+def test_the_plan_states_the_monthly_cost_of_the_nat():
     assert "USD" in prepare_network.COST and "month" in prepare_network.COST
 
 
@@ -276,7 +276,7 @@ def test_a_run_that_stopped_halfway_resumes_where_it_left_off(c):
 def test_the_block_it_prints_names_the_new_subnets_and_the_configuration_accepts_it(c, tmp_path):
     ec2 = FakeEc2()
     result = apply(c, ec2)
-    block = prepare_network.snippet(VPC, result.subnets)
+    block = prepare_network.network_snippet(VPC, result.subnets)
     loaded = config.load(write(tmp_path, VALID + "\n" + block))
     assert loaded.existing_network.private_subnets == result.subnets
     assert set(result.subnets) == {f"{REGION}a", f"{REGION}b"}

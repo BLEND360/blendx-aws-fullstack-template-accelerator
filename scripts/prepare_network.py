@@ -32,16 +32,17 @@ sys.path.insert(0, str(ROOT / "infra"))
 import boto3  # noqa: E402
 
 import config  # noqa: E402
+from awsutil import NAT_PER_GB, NAT_PER_HOUR, DeployError, check_account, cli, load_config, network_snippet, owned_filters  # noqa: E402
 from network_check import is_public  # noqa: E402
 
 COST = (
-    "A NAT gateway costs about 33 USD a month (0.045 USD an hour) plus 0.045 USD per GB it processes, "
+    f"A NAT gateway costs about {NAT_PER_HOUR * 730:.0f} USD a month ({NAT_PER_HOUR} USD an hour) plus {NAT_PER_GB} USD per GB it processes, "
     "for as long as it exists: `scripts/destroy_app.py` removes it."
 )
 PREFIX = 24  # a private subnet of 251 addresses is plenty for the tasks
 
 
-class PrepareError(RuntimeError):
+class PrepareError(DeployError):
     pass
 
 
@@ -62,16 +63,6 @@ class Result:
     route_table: str
 
 
-def _tags(resource: dict) -> dict[str, str]:
-    return {t["Key"]: t["Value"] for t in resource.get("Tags", [])}
-
-
-def _owned(c: config.Config, vpc_id: str, name: str) -> list[dict]:
-    """In this VPC, tagged with the project AND named as this script names it: the project tag alone could match
-    something another tool tagged, and this script changes a route in the table it finds."""
-    return [{"Name": "vpc-id", "Values": [vpc_id]}, {"Name": "tag:Project", "Values": [c.name]}, {"Name": "tag:Name", "Values": [f"{c.name}-{name}"]}]
-
-
 def _tag_spec(c: config.Config, kind: str, name: str) -> list[dict]:
     return [{"ResourceType": kind, "Tags": [{"Key": "Project", "Value": c.name}, {"Key": "Name", "Value": f"{c.name}-{name}"}]}]
 
@@ -89,7 +80,7 @@ def plan(c: config.Config, session, vpc_id: str) -> Plan:
         )
     tables = ec2.describe_route_tables(Filters=[{"Name": "vpc-id", "Values": [vpc_id]}])["RouteTables"]
     subnets = ec2.describe_subnets(Filters=[{"Name": "vpc-id", "Values": [vpc_id]}])["Subnets"]
-    ours = ec2.describe_subnets(Filters=_owned(c, vpc_id, "private-*"))["Subnets"]
+    ours = ec2.describe_subnets(Filters=owned_filters(c, "private-*", vpc_id))["Subnets"]
     ours_ids = {s["SubnetId"] for s in ours}
 
     public = [s for s in subnets if s["SubnetId"] not in ours_ids and is_public(tables, s["SubnetId"])]
@@ -129,7 +120,7 @@ def apply(c: config.Config, session, plan: Plan) -> Result:
     ec2 = session.client("ec2")
     vpc = plan.vpc_id
 
-    prepared = {s["AvailabilityZone"]: s["SubnetId"] for s in ec2.describe_subnets(Filters=_owned(c, vpc, "private-*"))["Subnets"]}
+    prepared = {s["AvailabilityZone"]: s["SubnetId"] for s in ec2.describe_subnets(Filters=owned_filters(c, "private-*", vpc))["Subnets"]}
     subnets: dict[str, str] = {}
     for zone, cidr in plan.private.items():
         if zone not in prepared:
@@ -139,19 +130,19 @@ def apply(c: config.Config, session, plan: Plan) -> Result:
             prepared[zone] = created["Subnet"]["SubnetId"]
         subnets[zone] = prepared[zone]
 
-    nats = ec2.describe_nat_gateways(Filter=[*_owned(c, vpc, "nat"), {"Name": "state", "Values": ["pending", "available"]}])["NatGateways"]
+    nats = ec2.describe_nat_gateways(Filter=[*owned_filters(c, "nat", vpc), {"Name": "state", "Values": ["pending", "available"]}])["NatGateways"]
     if nats:
         nat = nats[0]["NatGatewayId"]
         address = (nats[0].get("NatAddresses") or [{}])[0].get("AllocationId", "")
     else:
         # An address tagged with the project may be held by a NAT elsewhere (another VPC, or the template's own network):
         # only a free one is reused, otherwise a new one is allocated, and only now that a NAT has to be created.
-        free = [a for a in ec2.describe_addresses(Filters=[{"Name": "tag:Project", "Values": [c.name]}, {"Name": "tag:Name", "Values": [f"{c.name}-nat"]}])["Addresses"] if not a.get("AssociationId")]
+        free = [a for a in ec2.describe_addresses(Filters=owned_filters(c, "nat"))["Addresses"] if not a.get("AssociationId")]
         address = free[0]["AllocationId"] if free else ec2.allocate_address(Domain="vpc", TagSpecifications=_tag_spec(c, "elastic-ip", "nat"))["AllocationId"]
         nat = ec2.create_nat_gateway(SubnetId=plan.nat_subnet, AllocationId=address, TagSpecifications=_tag_spec(c, "natgateway", "nat"))["NatGateway"]["NatGatewayId"]
     ec2.get_waiter("nat_gateway_available").wait(NatGatewayIds=[nat])
 
-    owned_tables = ec2.describe_route_tables(Filters=_owned(c, vpc, "private"))["RouteTables"]
+    owned_tables = ec2.describe_route_tables(Filters=owned_filters(c, "private", vpc))["RouteTables"]
     table = owned_tables[0] if owned_tables else ec2.create_route_table(VpcId=vpc, TagSpecifications=_tag_spec(c, "route-table", "private"))["RouteTable"]
     default = next((r for r in table.get("Routes", []) if r.get("DestinationCidrBlock") == "0.0.0.0/0"), None)
     if default is None:
@@ -166,11 +157,6 @@ def apply(c: config.Config, session, plan: Plan) -> Result:
     return Result(subnets, nat, address, table["RouteTableId"])
 
 
-def snippet(vpc_id: str, subnets: dict[str, str]) -> str:
-    listed = ", ".join(f'{zone} = "{subnet}"' for zone, subnet in subnets.items())
-    return f'[network]\nvpc_id          = "{vpc_id}"\nprivate_subnets = {{ {listed} }}\n'
-
-
 def _vpc_id(args, c: config.Config, session) -> str:
     if args.vpc_id:
         return args.vpc_id
@@ -182,29 +168,24 @@ def _vpc_id(args, c: config.Config, session) -> str:
     raise PrepareError("Say which VPC to prepare with --vpc-id (`scripts/find_network.py` lists them).")
 
 
+@cli
 def main(argv: list[str] | None = None, *, cfg: config.Config | None = None, session=None) -> int:
     parser = argparse.ArgumentParser(description="Prepare an existing VPC to host the app.")
     parser.add_argument("--vpc-id", help="the VPC to prepare; by default the one in project.toml's [network], else the default VPC")
     parser.add_argument("--create", action="store_true", help="create it; without this only the plan is shown")
     args = parser.parse_args(argv)
 
-    c = cfg if cfg is not None else config.load()
+    c = cfg if cfg is not None else load_config()
     session = session or boto3.Session(region_name=c.aws_region)
-    try:
-        caller = session.client("sts").get_caller_identity()["Account"]
-        if caller != c.aws_account:
-            raise PrepareError(f"Your credentials are for account {caller}, but project.toml says {c.aws_account}. Switch profile or fix project.toml.")
-        the_plan = plan(c, session, _vpc_id(args, c, session))
-        _print_plan(the_plan)
-        if not args.create:
-            print(f"\n{COST}\nNothing was created. Run again with --create to create it.")
-            return 0
-        result = apply(c, session, the_plan)
-    except PrepareError as e:
-        print(e, file=sys.stderr)
-        return 1
+    check_account(c, session)
+    the_plan = plan(c, session, _vpc_id(args, c, session))
+    _print_plan(the_plan)
+    if not args.create:
+        print(f"\n{COST}\nNothing was created. Run again with --create to create it.")
+        return 0
+    result = apply(c, session, the_plan)
     print(f"\nReady: NAT {result.nat}, route table {result.route_table}. {COST}\n")
-    print(f"Add this to project.toml (this script does not edit it):\n\n{snippet(the_plan.vpc_id, result.subnets)}")
+    print(f"Add this to project.toml (this script does not edit it):\n\n{network_snippet(the_plan.vpc_id, result.subnets)}")
     return 0
 
 

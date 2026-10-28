@@ -1,4 +1,4 @@
-from aws_cdk import Duration, Stack
+from aws_cdk import Stack
 from aws_cdk import aws_iam as iam
 from constructs import Construct
 
@@ -18,7 +18,6 @@ class RolesStack(Stack):
                 description=spec.description,
                 assumed_by=spec.assumed_by,
                 managed_policies=spec.managed_policies,
-                max_session_duration=Duration.hours(spec.max_session_hours),
             )
             for statement in spec.statements:
                 role.add_to_policy(statement)

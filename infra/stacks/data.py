@@ -23,4 +23,5 @@ class DataStack(Stack):
                 sort_key=dynamodb.Attribute(name=spec.sort_key, type=dynamodb.AttributeType.STRING),
                 billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
                 removal_policy=RemovalPolicy.RETAIN,
+                point_in_time_recovery_specification=dynamodb.PointInTimeRecoverySpecification(point_in_time_recovery_enabled=True),
             )

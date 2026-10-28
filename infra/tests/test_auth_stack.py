@@ -2,11 +2,11 @@ import aws_cdk as cdk
 import pytest
 from aws_cdk.assertions import Match, Template
 
-import config
 from definitions.auth import auth_specs
 from stacks.auth import AuthStack
+from tests.conftest import fixed_config
 
-C = config.load()
+C = fixed_config()
 ENV = cdk.Environment(account=C.aws_account, region=C.aws_region)
 
 

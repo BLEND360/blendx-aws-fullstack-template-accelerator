@@ -1,4 +1,5 @@
 import importlib.util
+import sys
 from pathlib import Path
 
 import pytest
@@ -8,6 +9,7 @@ import config
 from tests.test_config import VALID, write
 
 SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
+sys.path.insert(0, str(SCRIPTS))  # the script imports awsutil from its own folder, as it does when run
 _spec = importlib.util.spec_from_file_location("network_check", SCRIPTS / "network_check.py")
 network_check = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(network_check)

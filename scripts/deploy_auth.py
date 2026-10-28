@@ -8,6 +8,7 @@ AUTH_JWT_SECRET exists, and turns LOCAL_AUTH_BYPASS off so sign-in is the real o
 unchanged stack is a CloudFormation no-op. The pool is RETAINed, so deleting the stack never deletes users.
 """
 
+import argparse
 import secrets
 import sys
 from pathlib import Path
@@ -19,7 +20,7 @@ import boto3  # noqa: E402
 
 import config  # noqa: E402
 import envfile  # noqa: E402
-from bootstrap import cdk  # noqa: E402
+from awsutil import cdk, check_account, cli, load_config, outputs  # noqa: E402
 
 BACKEND_ENV = ROOT / "backend" / "api" / ".env"
 FRONTEND_ENV = ROOT / "frontend" / "web" / ".env"
@@ -42,21 +43,25 @@ def env_values(c: config.Config, out: dict[str, str]) -> tuple[dict[str, str], d
     return backend, frontend
 
 
-def main() -> int:
-    c = config.load()
+@cli
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--stack-only",
+        action="store_true",
+        help="deploy the auth stack without writing local .env files",
+    )
+    args = parser.parse_args(argv)
+    c = load_config()
     session = boto3.Session(region_name=c.aws_region)
-    caller = session.client("sts").get_caller_identity()["Account"]
-    if caller != c.aws_account:
-        print(
-            f"Your credentials are for account {caller}, but project.toml says "
-            f"{c.aws_account}. Switch profile or fix project.toml.",
-            file=sys.stderr,
-        )
-        return 1
+    check_account(c, session)
 
     cdk("deploy", c.auth_stack, "--exclusively", "--require-approval", "never")
-    stack = session.client("cloudformation").describe_stacks(StackName=c.auth_stack)["Stacks"][0]
-    out = {o["OutputKey"]: o["OutputValue"] for o in stack["Outputs"]}
+    out = outputs(session, c.auth_stack)
+
+    if args.stack_only:
+        print(f"Sign-in stack deployed: {c.auth_stack}")
+        return 0
 
     backend, frontend = env_values(c, out)
     try:
@@ -67,7 +72,7 @@ def main() -> int:
     except FileNotFoundError as missing:
         print(f"\n{missing.filename} not found: run `python scripts/setup.py`, then deploy_auth.py again.", file=sys.stderr)
         return 1
-    print(f"""
+    print("""
 Done. Wrote the sign-in values to backend/api/.env and frontend/web/.env, and set LOCAL_AUTH_BYPASS=false
 (set it back to true to skip sign-in locally). Restart the API and the web app, then create a user:
 

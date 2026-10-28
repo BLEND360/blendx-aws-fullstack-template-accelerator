@@ -7,7 +7,7 @@ context, not CloudFormation exports, keeps the stacks deployable in any order.
 
 import re
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 
 from config import Config
 
@@ -34,7 +34,7 @@ class DeployInputs:
             value = get(key)
             return "" if value is None else str(value)
 
-        values = {key: text(key) for key in cls.__dataclass_fields__}
+        values = {key: text(key) for key in (f.name for f in fields(cls))}
         prefix = f"arn:aws:bedrock-agentcore:{c.aws_region}:{c.aws_account}"
         errors = []
 

@@ -47,7 +47,7 @@ def add_callback_url(path: Path, url: str) -> bool:
     eol = "\r\n" if "\r\n" in text else "\n"
     lines = text.split(eol)
     try:
-        new_text = eol.join(_edit(lines, url, eol))
+        new_text = eol.join(_edit(lines, url))
     except ProjectTomlError as e:
         raise ProjectTomlError(_by_hand(current, url, path)) from e
 
@@ -68,7 +68,7 @@ def _by_hand(current: list[str], url: str, path: Path) -> str:
     return f"Could not edit {path.name} safely. Set this line under [auth] yourself:\n  callback_urls = [{listed}]"
 
 
-def _edit(lines: list[str], url: str, eol: str) -> list[str]:
+def _edit(lines: list[str], url: str) -> list[str]:
     start = next((i for i, line in enumerate(lines) if _AUTH.match(line.strip())), None)
     if start is None:
         body = list(lines)

@@ -1,6 +1,9 @@
+import aws_cdk as cdk
 import pytest
+from aws_cdk.assertions import Template
 
 import config
+from stacks.network import import_vpc
 from tests.test_config import VALID, write
 
 SUBNETS = '{ eu-west-1a = "subnet-0a1b2c3d", eu-west-1b = "subnet-4e5f6a7b" }'
@@ -15,9 +18,9 @@ def test_no_network_section_means_the_template_creates_the_vpc(tmp_path):
     assert not c.uses_existing_network and c.existing_network is None
 
 
-def test_an_empty_network_section_is_the_same_as_none(tmp_path):
-    c = config.load(write(tmp_path, VALID + "\n[network]\n"))
-    assert not c.uses_existing_network
+def test_an_empty_network_section_is_an_incomplete_one_not_none(tmp_path):
+    with pytest.raises(ValueError, match=r"network\.vpc_id"):
+        config.load(write(tmp_path, VALID + "\n[network]\n"))
 
 
 def test_a_valid_section_describes_the_existing_vpc(tmp_path):
@@ -61,12 +64,7 @@ def test_a_malformed_subnet_id_is_named(tmp_path):
         with_network(tmp_path, f'vpc_id = "vpc-0123abcd"\nprivate_subnets = {bad}\n')
 
 
-# --- importing the existing VPC (task 2.3) ---
-
-import aws_cdk as cdk
-from aws_cdk.assertions import Template
-
-from stacks.network import import_vpc
+# --- importing the existing VPC ---
 
 EXISTING = config.ExistingNetwork("vpc-0123abcd", {"eu-west-1a": "subnet-0a1b2c3d", "eu-west-1b": "subnet-4e5f6a7b"})
 

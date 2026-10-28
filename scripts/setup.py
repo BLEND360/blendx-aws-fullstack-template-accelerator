@@ -4,8 +4,9 @@
 
 Validates project.toml, writes backend/api/.env and frontend/web/.env from it,
 renders the starter harness's agentcore config (unless harness.arn is set),
-then deletes itself. Re-running is safe: if both .env files exist it reports
-that setup is already complete and changes nothing.
+then deletes itself. Re-running is safe: an .env file that exists is never
+overwritten, so a developer's edits and the generated secret survive, and if
+both exist it reports that setup is already complete and changes nothing.
 """
 
 import json
@@ -71,9 +72,11 @@ def main() -> int:
         print(f"Setup is already complete for '{c.name}'. Nothing to do.")
         return 0
 
-    for path, content in ((BACKEND_ENV, backend_env(c)), (FRONTEND_ENV, frontend_env(c))):
+    for path, render in ((BACKEND_ENV, backend_env), (FRONTEND_ENV, frontend_env)):
+        if path.exists():
+            continue
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content, encoding="utf-8")
+        path.write_text(render(c), encoding="utf-8")
         print(f"  wrote {path.relative_to(ROOT)}")
     if c.deploys_starter_harness:
         harness_files.write(c, ROOT / "harness")
@@ -85,7 +88,7 @@ Project '{c.name}' configured for {c.aws_account} / {c.aws_region}.
   tables:  {c.sessions_table}, {c.items_table}
   harness: {c.harness_stack if c.deploys_starter_harness else c.harness_arn} (endpoint {c.harness_endpoint})
 
-Next: python scripts/bootstrap.py   # once per AWS account
+Next: uv run --project infra python scripts/bootstrap.py   # once per AWS account
 """)
 
     Path(__file__).unlink()

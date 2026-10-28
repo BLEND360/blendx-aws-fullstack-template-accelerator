@@ -1,5 +1,6 @@
 """scripts/destroy_app.py against an in-memory account that records every deletion in the order it happens."""
 
+import fnmatch
 import importlib.util
 import sys
 from pathlib import Path
@@ -54,6 +55,7 @@ class World:
         # a network prepared by prepare_network.py, plus things that must survive
         self.nats = [{"NatGatewayId": "nat-ours", "VpcId": VPC, "State": "available", "Tags": tagged(c.name, f"{c.name}-nat")},
                      {"NatGatewayId": "nat-other-project", "VpcId": VPC, "State": "available", "Tags": tagged("another", "another-nat")},
+                     {"NatGatewayId": "nat-other-name", "VpcId": VPC, "State": "available", "Tags": tagged(c.name, "someone-elses-nat")},
                      {"NatGatewayId": "nat-untagged", "VpcId": VPC, "State": "available", "Tags": []}]
         self.subnets = [{"SubnetId": "subnet-ours-a", "VpcId": VPC, "Tags": tagged(c.name, f"{c.name}-private-a")},
                         {"SubnetId": "subnet-ours-b", "VpcId": VPC, "Tags": tagged(c.name, f"{c.name}-private-b")},
@@ -201,6 +203,9 @@ class World:
             if f["Name"] == "tag:Project":
                 if {t["Key"]: t["Value"] for t in resource.get("Tags", [])}.get("Project") not in f["Values"]:
                     return False
+            if f["Name"] == "tag:Name":
+                if not any(fnmatch.fnmatch({t["Key"]: t["Value"] for t in resource.get("Tags", [])}.get("Name", ""), v) for v in f["Values"]):
+                    return False
             if f["Name"] == "state" and resource.get("State") not in f["Values"]:
                 return False
         return True
@@ -310,7 +315,8 @@ class World:
 
 @pytest.fixture
 def c(tmp_path) -> config.Config:
-    return config.load(write(tmp_path, VALID))
+    """A project that deploys into a VPC prepared by prepare_network.py: the only case with network pieces of its own."""
+    return config.load(write(tmp_path, VALID + EXISTING))
 
 
 def run(c, world, *args):
@@ -378,7 +384,7 @@ def test_the_session_secret_is_deleted_without_a_recovery_window(c):
 def test_only_what_the_project_owns_goes_not_other_projects_or_untagged_resources(c):
     world = World(c)
     run(c, world, *confirm(c))
-    assert [n["NatGatewayId"] for n in world.nats if n["State"] != "deleted"] == ["nat-other-project", "nat-untagged"]
+    assert [n["NatGatewayId"] for n in world.nats if n["State"] != "deleted"] == ["nat-other-project", "nat-other-name", "nat-untagged"]
     assert [s["SubnetId"] for s in world.subnets] == ["subnet-public"]
     assert [t["RouteTableId"] for t in world.route_tables] == ["rtb-main"]
     assert [a["AllocationId"] for a in world.addresses] == ["eipalloc-other"]
@@ -419,7 +425,7 @@ def test_everything_adds_the_harness_then_the_data_then_sign_in_then_the_roles_i
     assert p("endpoint:PROD") < p(f"stack:{c.harness_stack}")
     assert p(f"stack:{c.app_stack}") < p(f"stack:{c.harness_stack}") < p(f"table:{c.sessions_table}")
     assert p(f"table:{c.sessions_table}") < p(f"stack:{c.data_stack}")
-    assert p(f"pool-domain:acme-portal-111122223333") < p(f"pool:{POOL}") < p(f"stack:{c.auth_stack}")
+    assert p("pool-domain:acme-portal-111122223333") < p(f"pool:{POOL}") < p(f"stack:{c.auth_stack}")
     assert p(f"stack:{c.auth_stack}") < p(f"stack:{c.roles_stack}")
     assert world.stacks == set() and world.pools == {} and world.dynamo_tables == set()
 
@@ -468,7 +474,7 @@ def test_a_failure_in_one_independent_step_does_not_stop_the_others(c):
 
 def test_the_end_lists_what_still_exists(c, capsys):
     world = World(c)
-    world.fail[f"delete_subnet:subnet-ours-a"] = err("DependencyViolation")
+    world.fail["delete_subnet:subnet-ours-a"] = err("DependencyViolation")
     sleeper = lambda _: None  # noqa: E731
     destroy_app.main([*confirm(c)], cfg=c, session=type("S", (), {"client": lambda self, name: world.client(name)})(), sleep=sleeper)
     assert "subnet-ours-a" in capsys.readouterr().out.split("Still exists")[-1]
@@ -557,8 +563,7 @@ def test_an_object_that_could_not_be_deleted_is_a_reported_failure_and_the_bucke
     assert f"s3:{c.web_bucket}" not in world.log and "AccessDenied" in capsys.readouterr().err
 
 
-def test_with_an_existing_vpc_only_its_tagged_resources_go_not_a_tagged_one_in_another_vpc(tmp_path):
-    c = config.load(write(tmp_path, VALID + EXISTING))
+def test_with_an_existing_vpc_only_its_tagged_resources_go_not_a_tagged_one_in_another_vpc(c):
     world = World(c)
     world.subnets.append({"SubnetId": "subnet-elsewhere", "VpcId": OTHER_VPC, "Tags": tagged(c.name, f"{c.name}-private-z")})
     world.nats.append({"NatGatewayId": "nat-elsewhere", "VpcId": OTHER_VPC, "State": "available", "Tags": tagged(c.name, f"{c.name}-nat")})
@@ -572,3 +577,31 @@ def test_the_route_table_waits_for_the_template_network_stack_as_the_other_netwo
     world.fail[f"delete_stack:{c.network_stack}"] = err("AccessDenied")
     assert run(c, world, *confirm(c)) == 1
     assert "route-table:rtb-ours" not in world.log
+
+
+def test_a_network_the_template_created_plans_no_network_deletions_besides_its_stack(tmp_path, capsys):
+    c = config.load(write(tmp_path, VALID))
+    world = World(c)
+    assert run(c, world) == 0
+    plan = capsys.readouterr().out
+    assert c.network_stack in plan and "- NAT gateway" not in plan and "- Elastic IP" not in plan
+    assert run(c, world, *confirm(c)) == 0
+    assert f"stack:{c.network_stack}" in world.log
+    assert not any(e.startswith(("nat:", "subnet:", "route-table:", "eip:")) for e in world.log)
+    assert len(world.nats) == 4 and len(world.subnets) == 3 and len(world.route_tables) == 2 and len(world.addresses) == 2
+
+
+def test_a_harness_stack_that_cannot_be_resolved_is_a_reported_failure_not_a_traceback(c, capsys):
+    world = World(c)
+
+    class NoOutputs:
+        def __getattr__(self, name):
+            return getattr(world.client("cloudformation"), name)
+
+        def describe_stacks(self, StackName):
+            return {"Stacks": [{"Outputs": []}]}
+
+    session = type("S", (), {"client": lambda self, name: NoOutputs() if name == "cloudformation" else world.client(name)})()
+    assert destroy_app.main(["--everything", *confirm(c)], cfg=c, session=session, sleep=lambda _: None) == 1
+    out = capsys.readouterr()
+    assert "has no output" in out.err and "Still exists" in out.out

@@ -49,6 +49,11 @@ class ReadOnlyEc2:
 
     def __init__(self, vpcs):
         self.vpcs = {v["id"]: v for v in vpcs}
+        self.writes: list[str] = []
+
+    def __getattr__(self, name):
+        self.writes.append(name)  # only reached for a call the fake does not have: anything but a read
+        raise AttributeError(name)
 
     def describe_vpcs(self, **_):
         return {"Vpcs": [
@@ -98,7 +103,7 @@ GOOD_VPC = vpc("vpc-0900d001", name="shared", subnets={
 
 
 def test_it_lists_every_vpc_with_its_subnets_zones_and_how_each_one_reaches_out(c):
-    reports = find_network.discover(c, FakeSession([DEFAULT_VPC, GOOD_VPC]))
+    reports = find_network.discover(FakeSession([DEFAULT_VPC, GOOD_VPC]))
     assert [r.vpc_id for r in reports] == ["vpc-0defa001", "vpc-0900d001"]
     default, good = reports
     assert default.is_default and default.has_igw and not good.is_default
@@ -106,64 +111,66 @@ def test_it_lists_every_vpc_with_its_subnets_zones_and_how_each_one_reaches_out(
     assert good.name == "shared"
 
 
-def test_a_subnet_is_usable_when_it_reaches_out_without_an_internet_gateway_and_says_why_not_otherwise(c):
-    good = next(r for r in find_network.discover(c, FakeSession([GOOD_VPC])))
+def test_a_subnet_is_usable_when_it_reaches_out_without_an_internet_gateway_and_says_why_not_otherwise():
+    good = next(r for r in find_network.discover(FakeSession([GOOD_VPC])))
     by_id = {s.subnet_id: s for s in good.subnets}
     assert by_id["subnet-0a1b2c3d"].usable and by_id["subnet-0a1b2c3d"].reason == ""
     assert not by_id["subnet-1234abcd"].usable and "internet gateway" in by_id["subnet-1234abcd"].reason
 
 
-def test_the_default_vpc_has_no_usable_subnet_and_no_block_is_offered(c):
-    (default,) = find_network.discover(c, FakeSession([DEFAULT_VPC]))
+def test_the_default_vpc_has_no_usable_subnet_and_no_block_is_offered():
+    (default,) = find_network.discover(FakeSession([DEFAULT_VPC]))
     assert not any(s.usable for s in default.subnets)
     assert find_network.snippet(default) is None
 
 
-def test_a_vpc_with_two_usable_zones_gets_a_block_that_the_configuration_accepts(c, tmp_path):
-    (good,) = find_network.discover(c, FakeSession([GOOD_VPC]))
+def test_a_vpc_with_two_usable_zones_gets_a_block_that_the_configuration_accepts(tmp_path):
+    (good,) = find_network.discover(FakeSession([GOOD_VPC]))
     block = find_network.snippet(good)
     assert block.startswith("[network]") and "vpc-0900d001" in block
     accepted = config.load(write(tmp_path, VALID + "\n" + block))
     assert accepted.existing_network.private_subnets == {f"{REGION}a": "subnet-0a1b2c3d", f"{REGION}b": "subnet-4e5f6a7b"}
 
 
-def test_one_usable_zone_is_not_enough_for_a_block(c):
+def test_one_usable_zone_is_not_enough_for_a_block():
     one = vpc("vpc-0e0e0e01", subnets={
         "subnet-0a1b2c3d": (f"{REGION}a", "10.0.1.0/24", nat()),
         "subnet-4e5f6a7b": (f"{REGION}a", "10.0.2.0/24", nat()),  # same zone twice
     })
-    (report,) = find_network.discover(c, FakeSession([one]))
+    (report,) = find_network.discover(FakeSession([one]))
     assert find_network.snippet(report) is None
 
 
-def test_a_vpc_without_an_internet_gateway_gets_no_block_even_with_usable_subnets(c):
+def test_a_vpc_without_an_internet_gateway_gets_no_block_even_with_usable_subnets():
     nogw = vpc("vpc-0a0b0c01", igw_attached=False, subnets={
         "subnet-0a1b2c3d": (f"{REGION}a", "10.0.1.0/24", nat()),
         "subnet-4e5f6a7b": (f"{REGION}b", "10.0.2.0/24", nat()),
     })
-    (report,) = find_network.discover(c, FakeSession([nogw]))
+    (report,) = find_network.discover(FakeSession([nogw]))
     assert not report.has_igw and find_network.snippet(report) is None
 
 
 def test_the_report_prints_the_block_for_the_vpc_that_qualifies(c):
-    text = find_network.report(c, find_network.discover(c, FakeSession([DEFAULT_VPC, GOOD_VPC])))
+    text = find_network.report(c, find_network.discover(FakeSession([DEFAULT_VPC, GOOD_VPC])))
     assert "vpc-0900d001" in text and "[network]" in text and "private_subnets" in text
 
 
 def test_when_none_qualifies_it_says_the_template_can_create_the_network_and_what_the_closest_one_lacks(c):
-    text = find_network.report(c, find_network.discover(c, FakeSession([DEFAULT_VPC])))
+    text = find_network.report(c, find_network.discover(FakeSession([DEFAULT_VPC])))
     assert "[network]" not in text.replace("`[network]`", "")
     assert "prepare_network.py" in text and "vpc-0defa001" in text
     assert "private" in text and "NAT" in text
-    assert "creates" in text or "create" in text
+    assert "create" in text
 
 
 def test_it_reads_and_never_writes(c):
-    find_network.report(c, find_network.discover(c, FakeSession([DEFAULT_VPC, GOOD_VPC])))  # ReadOnlyEc2 has no write methods
+    session = FakeSession([DEFAULT_VPC, GOOD_VPC])
+    find_network.report(c, find_network.discover(session))
+    assert session.ec2.writes == []
 
 
-def test_the_check_that_verifies_a_vpc_and_the_one_that_discovers_it_never_disagree(c, tmp_path):
-    """The block it offers must pass the deployment's own verification (Requirement 12.6)."""
-    (good,) = find_network.discover(c, FakeSession([GOOD_VPC]))
+def test_the_check_that_verifies_a_vpc_and_the_one_that_discovers_it_never_disagree(tmp_path):
+    """The block it offers must pass the deployment's own verification."""
+    (good,) = find_network.discover(FakeSession([GOOD_VPC]))
     accepted = config.load(write(tmp_path, VALID + "\n" + find_network.snippet(good)))
     network_check.check(accepted, FakeSession([GOOD_VPC]))

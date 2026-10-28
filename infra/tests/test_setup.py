@@ -56,6 +56,19 @@ def test_second_run_reports_complete(clone):
     assert (clone / "backend/api/.env").read_text() == before
 
 
+def test_only_the_missing_env_file_is_written_so_edits_and_the_secret_survive(clone):
+    run(clone)
+    shutil.copy(SETUP, clone / "scripts/setup.py")
+    backend = clone / "backend/api/.env"
+    backend.write_text("EDITED=1\n")
+    (clone / "frontend/web/.env").unlink()
+
+    assert run(clone).returncode == 0
+
+    assert backend.read_text() == "EDITED=1\n"
+    assert (clone / "frontend/web/.env").read_text().startswith("#")
+
+
 def test_invalid_project_toml_fails_and_keeps_script(clone):
     toml = clone / "project.toml"
     toml.write_text(re.sub(r'aws_account\s*=\s*"\d+"', 'aws_account = "nope"', toml.read_text()))

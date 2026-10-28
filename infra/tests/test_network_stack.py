@@ -2,12 +2,12 @@ import aws_cdk as cdk
 import pytest
 from aws_cdk.assertions import Template
 
-import config
 from definitions.network import network_specs
 from specs.network import NetworkSpec
 from stacks.network import NetworkStack
+from tests.conftest import fixed_config
 
-C = config.load()
+C = fixed_config()
 ENV = cdk.Environment(account=C.aws_account, region=C.aws_region)
 
 

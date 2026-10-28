@@ -4,6 +4,7 @@ import base64
 import hashlib
 import importlib.util
 import json
+import subprocess
 import tomllib
 from pathlib import Path
 
@@ -42,6 +43,7 @@ class World:
         self.invalidation_error: ClientError | None = None
         self.auth_deploy_error: Exception | None = None
         self.image_id, self.layers = IMAGE_ID, list(LAYERS)
+        self.running_tag = "c" * 40 + "-1"
         self.docker_configs: list[tuple] = []  # (command, config dir, config.json text) for each docker call given its own config
         self.events: list[tuple] = []  # ("cdk", ...), ("run", ...), ("invalidate", ...), ("put", key), ("delete", key)
 
@@ -146,6 +148,22 @@ class World:
 
         return Cognito()
 
+    def _ecs(self):
+        world, c = self, self.c
+
+        class Ecs:
+            def describe_services(self, cluster, services):
+                assert cluster == c.cluster and services == [c.service]
+                if world.running_tag is None:
+                    return {"services": [], "failures": [{"reason": "MISSING"}]}
+                return {"services": [{"taskDefinition": "task-definition"}], "failures": []}
+
+            def describe_task_definition(self, taskDefinition):
+                assert taskDefinition == "task-definition"
+                return {"taskDefinition": {"containerDefinitions": [{"image": f"repo:{world.running_tag}"}]}}
+
+        return Ecs()
+
     # --- scripts/deploy_app.py's seams ---
     def cdk(self, *args):
         self.events.append(("cdk", *args))
@@ -157,8 +175,8 @@ class World:
             self.stacks |= {self.c.app_stack}
             self.repo = True  # the app stack creates the repository
 
-    def run(self, *cmd, cwd=None, env=None, capture=False, input=None):
-        self.events.append(("run", cmd, env, input))
+    def run(self, *cmd, cwd=None, env=None, capture=False):
+        self.events.append(("run", cmd, env))
         if env and "DOCKER_CONFIG" in env:  # what docker would read, captured while it exists
             directory = Path(env["DOCKER_CONFIG"])
             self.docker_configs.append((cmd, directory, (directory / "config.json").read_text(encoding="utf-8") if (directory / "config.json").exists() else None))
@@ -222,7 +240,7 @@ def go(deploy_app, *args):
     return deploy_app.main(["--env", "dev", *args])
 
 
-# ------------------------------------------------------------------ 5.4: validations and inputs
+# ------------------------------------------------------------------ validations and inputs
 
 
 def test_the_environment_is_a_required_argument(deploy_app):
@@ -304,7 +322,7 @@ def test_a_missing_cloudfront_prefix_list_stops_the_script(deploy_app, monkeypat
     assert world.cdk_calls() == []
 
 
-# ------------------------------------------------------------------ 5.5: infrastructure and image
+# ------------------------------------------------------------------ infrastructure and image
 
 
 def context(call: tuple) -> dict:
@@ -350,6 +368,63 @@ def test_a_tag_already_in_the_repository_is_not_pushed_again(deploy_app, monkeyp
     assert context([c_ for c_ in world.cdk_calls() if c.app_stack in c_][0])["image_tag"] == TAG
 
 
+def test_external_image_tag_is_pushed_and_written_to_github_output(deploy_app, monkeypatch, tmp_path):
+    c, world, _ = arrange(deploy_app, monkeypatch, tmp_path)
+    output = tmp_path / "github-output"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+    tag = "f" * 40 + "-2"
+
+    assert go(deploy_app, "--step", "image", "--image-tag", tag) == 0
+    assert any(f"{c.ecr_repository}:{tag}" in part for part in world.commands("docker", "push")[0])
+    assert output.read_text(encoding="utf-8") == f"image_tag={tag}\n"
+    assert not [call for call in world.cdk_calls() if c.app_stack in call]
+
+
+def test_external_image_tag_already_in_ecr_fails_without_pushing(deploy_app, monkeypatch, tmp_path, capsys):
+    c, world, _ = arrange(deploy_app, monkeypatch, tmp_path, tag_in_ecr=True)
+    tag = "f" * 40 + "-2"
+
+    assert go(deploy_app, "--step", "image", "--image-tag", tag) == 1
+    assert "refusing to overwrite" in capsys.readouterr().err
+    assert world.commands("docker", "push") == []
+
+
+def test_stack_step_uses_external_tag_without_docker(deploy_app, monkeypatch, tmp_path):
+    c, world, _ = arrange(deploy_app, monkeypatch, tmp_path)
+    monkeypatch.setattr(deploy_app.shutil, "which", lambda tool: None if tool == "docker" else f"/usr/bin/{tool}")
+    tag = "f" * 40 + "-2"
+
+    assert go(deploy_app, "--step", "stack", "--image-tag", tag) == 0
+    (call,) = [call for call in world.cdk_calls() if c.app_stack in call]
+    assert context(call)["image_tag"] == tag
+
+
+def test_stack_keep_image_reads_the_ecs_task_definition(deploy_app, monkeypatch, tmp_path):
+    c, world, _ = arrange(deploy_app, monkeypatch, tmp_path)
+
+    assert go(deploy_app, "--step", "stack", "--keep-image") == 0
+    (call,) = [call for call in world.cdk_calls() if c.app_stack in call]
+    assert context(call)["image_tag"] == world.running_tag
+
+
+def test_stack_without_tag_or_running_image_fails_actionably(deploy_app, monkeypatch, tmp_path, capsys):
+    c, world, _ = arrange(deploy_app, monkeypatch, tmp_path)
+    world.running_tag = None
+
+    assert go(deploy_app, "--step", "stack", "--keep-image") == 1
+    assert "no deployable image" in capsys.readouterr().err
+    assert not [call for call in world.cdk_calls() if c.app_stack in call]
+
+
+def test_spa_step_does_not_require_docker(deploy_app, monkeypatch, tmp_path):
+    c, world, _ = arrange(deploy_app, monkeypatch, tmp_path)
+    world.stacks.add(c.app_stack)
+    monkeypatch.setattr(deploy_app.shutil, "which", lambda tool: None if tool == "docker" else f"/usr/bin/{tool}")
+
+    assert go(deploy_app, "--step", "spa") == 0
+    assert not world.commands("docker")
+
+
 def test_the_registry_login_never_touches_the_users_docker_credential_store(deploy_app, monkeypatch, tmp_path):
     """On Windows the credential store caps a credential at 2560 bytes and an ECR token is longer, so
     `docker login` fails there. The script gives docker a throwaway config that already holds the token."""
@@ -391,7 +466,7 @@ def test_with_an_existing_vpc_no_network_stack_is_deployed(deploy_app, monkeypat
     assert c.network_stack not in call
 
 
-# ------------------------------------------------------------------ 5.6: SPA, return address and closing
+# ------------------------------------------------------------------ SPA, return address and closing
 
 
 def test_the_spa_is_built_with_the_sign_in_values_from_the_auth_stack(deploy_app, monkeypatch, tmp_path):
@@ -501,7 +576,7 @@ def test_a_second_run_changes_neither_project_toml_nor_auth(deploy_app, monkeypa
 
 def test_if_auth_failed_after_project_toml_was_edited_the_next_run_still_redeploys_it(deploy_app, monkeypatch, tmp_path):
     c, world, path = arrange(deploy_app, monkeypatch, tmp_path)
-    world.auth_deploy_error = deploy_app.subprocess.CalledProcessError(1, ["cdk", "deploy"])
+    world.auth_deploy_error = subprocess.CalledProcessError(1, ["cdk", "deploy"])
     assert go(deploy_app) == 1
     assert urls(path) == [f"{CLOUDFRONT}/"] and world.live_callbacks == []  # the file is ahead of Cognito
     world.auth_deploy_error = None

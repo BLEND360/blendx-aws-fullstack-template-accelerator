@@ -79,6 +79,21 @@ def test_invalid_values_rejected(tmp_path, old, new):
         config.load(write(tmp_path, VALID.replace(old, new)))
 
 
+def test_unknown_sizing_key_is_a_validation_error(tmp_path):
+    with pytest.raises(ValueError, match=r"environments\.dev: unknown keys \['nat_gateway'\]"):
+        config.load(write(tmp_path, VALID + "nat_gateway = 2\n"))
+
+
+def test_missing_sizing_key_is_a_validation_error(tmp_path):
+    with pytest.raises(ValueError, match=r"environments\.dev"):
+        config.load(write(tmp_path, VALID.replace("cpu = 256\n", "")))
+
+
+def test_scalar_model_ids_is_rejected_not_split_into_characters(tmp_path):
+    with pytest.raises(ValueError, match="model_ids: must be a list"):
+        config.load(write(tmp_path, VALID.replace('model_ids = ["model-a", "model-b"]', 'model_ids = "model-a"')))
+
+
 def test_auth_names_and_default_callbacks(tmp_path):
     c = config.load(write(tmp_path, VALID))
     assert (c.user_pool, c.app_client) == ("acme-portal-users", "acme-portal-web")

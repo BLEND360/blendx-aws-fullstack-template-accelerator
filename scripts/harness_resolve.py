@@ -16,21 +16,22 @@ sys.path.insert(0, str(ROOT / "infra"))
 from botocore.exceptions import ClientError  # noqa: E402
 
 import config  # noqa: E402
+from awsutil import DeployError  # noqa: E402
 
 _MEMORY_ARN = re.compile(r"^arn:aws:bedrock-agentcore:[a-z0-9-]+:\d{12}:memory/[A-Za-z0-9_-]+$")
 
 
-class HarnessResolveError(RuntimeError):
+class HarnessResolveError(DeployError):
     pass
 
 
 def resolve(c: config.Config, session) -> tuple[str, str]:
     """(harness_arn, memory_arn)."""
-    harness_arn = c.harness_arn or _starter_harness_arn(c, session)
+    harness_arn = c.harness_arn or starter_harness_arn(c, session)
     return harness_arn, _memory_arn(session, harness_arn)
 
 
-def _starter_harness_arn(c: config.Config, session) -> str:
+def starter_harness_arn(c: config.Config, session) -> str:
     try:
         stack = session.client("cloudformation").describe_stacks(StackName=c.harness_stack)["Stacks"][0]
     except ClientError as e:

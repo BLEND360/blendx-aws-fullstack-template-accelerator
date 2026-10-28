@@ -5,14 +5,14 @@ from pathlib import Path
 
 import pytest
 
-import config
 from definitions.app import APP_ID, app_specs
 from deployment import DeployInputs
+from tests.conftest import fixed_config
 from tests.test_deployment_inputs import GOOD
 
 ROOT = Path(__file__).resolve().parents[2]
 SETUP = ROOT / "scripts" / "setup.py"
-C = config.load()
+C = fixed_config()
 PREFIX = f"arn:aws:bedrock-agentcore:{C.aws_region}:{C.aws_account}"
 INPUTS = DeployInputs(
     **{

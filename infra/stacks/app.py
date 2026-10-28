@@ -113,7 +113,7 @@ class AppStack(Stack):
             min_healthy_percent=100,
             max_healthy_percent=200,
             circuit_breaker=ecs.DeploymentCircuitBreaker(rollback=True),
-            enable_execute_command=True,  # the task role carries the SSM permissions for it
+            enable_execute_command=True,  # operators open a shell in a task; the task role carries the SSM permissions for it
             health_check_grace_period=Duration.seconds(60),  # the container needs a moment before /health answers
         )
 
@@ -159,23 +159,18 @@ class AppStack(Stack):
             encryption=s3.BucketEncryption.S3_MANAGED,
             removal_policy=RemovalPolicy.RETAIN,
         )
-        default_behavior = cloudfront.BehaviorOptions(
-            origin=origins.S3BucketOrigin.with_origin_access_control(bucket),
-            viewer_protocol_policy=cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-            cache_policy=cloudfront.CachePolicy.CACHING_OPTIMIZED,
-        )
+        associations = []
         if web.spa_fallback:
             rewrite = cloudfront.Function(
                 scope, "SpaRewrite", code=cloudfront.FunctionCode.from_inline(SPA_REWRITE), runtime=cloudfront.FunctionRuntime.JS_2_0
             )
-            default_behavior = cloudfront.BehaviorOptions(
-                origin=default_behavior.origin,
-                viewer_protocol_policy=default_behavior.viewer_protocol_policy,
-                cache_policy=default_behavior.cache_policy,
-                function_associations=[
-                    cloudfront.FunctionAssociation(function=rewrite, event_type=cloudfront.FunctionEventType.VIEWER_REQUEST)
-                ],
-            )
+            associations.append(cloudfront.FunctionAssociation(function=rewrite, event_type=cloudfront.FunctionEventType.VIEWER_REQUEST))
+        default_behavior = cloudfront.BehaviorOptions(
+            origin=origins.S3BucketOrigin.with_origin_access_control(bucket),
+            viewer_protocol_policy=cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+            cache_policy=cloudfront.CachePolicy.CACHING_OPTIMIZED,
+            function_associations=associations,
+        )
         return cloudfront.Distribution(scope, "Distribution", default_behavior=default_behavior, default_root_object="index.html")
 
     def _api_routes(self, distribution: cloudfront.Distribution, spec: AppSpec, load_balancer: elbv2.ApplicationLoadBalancer) -> None:

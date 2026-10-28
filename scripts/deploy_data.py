@@ -15,20 +15,13 @@ sys.path.insert(0, str(ROOT / "infra"))
 
 import boto3  # noqa: E402
 
-import config  # noqa: E402
-from bootstrap import cdk  # noqa: E402
+from awsutil import cdk, check_account, cli, load_config  # noqa: E402
 
 
+@cli
 def main() -> int:
-    c = config.load()
-    caller = boto3.Session(region_name=c.aws_region).client("sts").get_caller_identity()["Account"]
-    if caller != c.aws_account:
-        print(
-            f"Your credentials are for account {caller}, but project.toml says "
-            f"{c.aws_account}. Switch profile or fix project.toml.",
-            file=sys.stderr,
-        )
-        return 1
+    c = load_config()
+    check_account(c, boto3.Session(region_name=c.aws_region))
 
     cdk("deploy", c.data_stack, "--exclusively", "--require-approval", "never")
     print(f"""

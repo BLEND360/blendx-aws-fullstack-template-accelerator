@@ -20,6 +20,7 @@ sys.path.insert(0, str(ROOT / "infra"))
 import boto3  # noqa: E402
 
 import config  # noqa: E402
+from awsutil import check_account, cli, load_config, network_snippet  # noqa: E402
 from network_check import egress_problem  # noqa: E402
 
 
@@ -52,7 +53,7 @@ class VpcReport:
         return zones
 
 
-def discover(c: config.Config, session) -> list[VpcReport]:
+def discover(session) -> list[VpcReport]:
     ec2 = session.client("ec2")
     reports = []
     for vpc in ec2.describe_vpcs()["Vpcs"]:
@@ -83,9 +84,7 @@ def snippet(report: VpcReport) -> str | None:
     zones = report.usable_zones()
     if not report.has_igw or len(zones) < 2:
         return None
-    chosen = dict(list(zones.items())[:2])
-    listed = ", ".join(f'{zone} = "{subnet}"' for zone, subnet in chosen.items())
-    return f'[network]\nvpc_id          = "{report.vpc_id}"\nprivate_subnets = {{ {listed} }}\n'
+    return network_snippet(report.vpc_id, dict(list(zones.items())[:2]))
 
 
 def _lacks(report: VpcReport) -> list[str]:
@@ -128,14 +127,12 @@ def report(c: config.Config, reports: list[VpcReport]) -> str:
     return "\n".join(lines)
 
 
+@cli
 def main() -> int:
-    c = config.load()
+    c = load_config()
     session = boto3.Session(region_name=c.aws_region)
-    caller = session.client("sts").get_caller_identity()["Account"]
-    if caller != c.aws_account:
-        print(f"Your credentials are for account {caller}, but project.toml says {c.aws_account}. Switch profile or fix project.toml.", file=sys.stderr)
-        return 1
-    print(report(c, discover(c, session)))
+    check_account(c, session)
+    print(report(c, discover(session)))
     return 0
 
 

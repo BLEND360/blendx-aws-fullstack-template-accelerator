@@ -17,9 +17,6 @@ the endpoint steps run the platform's own scripts from scripts/harness/.
 """
 
 import json
-import os
-import shutil
-import subprocess
 import sys
 from pathlib import Path
 
@@ -28,41 +25,17 @@ sys.path.insert(0, str(ROOT / "infra"))
 
 import config  # noqa: E402
 import harness_files  # noqa: E402
+from awsutil import cli, load_config, run  # noqa: E402
 
 PLATFORM_SCRIPTS = ROOT / "scripts" / "harness"
-
-
-def run(*cmd: str, cwd: Path = ROOT, capture: bool = False) -> str:
-    exe = shutil.which(cmd[0])
-    if not exe:
-        sys.exit(f"{cmd[0]} not found on PATH")
-    stdout = subprocess.PIPE if capture else None
-    return subprocess.run([exe, *cmd[1:]], cwd=cwd, check=True, stdout=stdout, text=True).stdout
 
 
 def platform(script: str, *args: str) -> str:
     return run("bash", str(PLATFORM_SCRIPTS / script), *args, capture=True)
 
 
-def emit(arn: str, endpoint: str) -> None:
-    """Hand the resolved pair to the next pipeline step."""
-    print(f"harness_arn={arn}\nharness_endpoint={endpoint}")
-    if out := os.environ.get("GITHUB_OUTPUT"):
-        with open(out, "a", encoding="utf-8") as f:
-            f.write(f"harness_arn={arn}\nharness_endpoint={endpoint}\n")
-
-
-def main() -> int:
-    c = config.load()
-
-    if not c.deploys_starter_harness:
-        print(
-            f"Skipping the starter harness: project.toml sets harness.arn = {c.harness_arn!r}. "
-            "Nothing is deployed and no deployed harness is touched."
-        )
-        emit(c.harness_arn, c.harness_endpoint)
-        return 0
-
+def deploy(c: config.Config) -> str:
+    """Deploy the starter harness and point its endpoint at the new version. Returns the harness ARN."""
     harness_files.write(c)
     cdk_app = harness_files.HARNESS_DIR / "agentcore" / "cdk"
     if not (cdk_app / "node_modules").exists():
@@ -78,8 +51,22 @@ def main() -> int:
         "--alias", c.harness_endpoint, "--harness-id", info["id"], "--version", info["version"],
     )
     platform("wait-harness-ready.sh", "--harness-id", info["id"], "--alias", c.harness_endpoint)
+    return info["arn"]
 
-    emit(info["arn"], c.harness_endpoint)
+
+@cli
+def main() -> int:
+    c = load_config()
+
+    if c.deploys_starter_harness:
+        arn = deploy(c)
+    else:
+        print(
+            f"Skipping the starter harness: project.toml sets harness.arn = {c.harness_arn!r}. "
+            "Nothing is deployed and no deployed harness is touched."
+        )
+        arn = c.harness_arn
+    print(f"harness_arn={arn}\nharness_endpoint={c.harness_endpoint}")
     return 0
 
 

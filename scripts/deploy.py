@@ -24,14 +24,11 @@ SCRIPTS = ROOT / "scripts"
 sys.path.insert(0, str(ROOT / "infra"))
 
 import boto3  # noqa: E402
-from botocore.exceptions import BotoCoreError, ClientError  # noqa: E402
+from botocore.exceptions import ClientError  # noqa: E402
 
 import config  # noqa: E402
+from awsutil import DeployError, cli, load_config, outputs  # noqa: E402
 from definitions.app import APP_ID  # noqa: E402
-
-
-class DeployError(RuntimeError):
-    pass
 
 
 def steps(c: config.Config, env: str) -> list[tuple[str, list[str]]]:
@@ -59,43 +56,35 @@ def can_create_network(c: config.Config, session) -> bool:
     return True
 
 
+@cli
 def main(argv: list[str] | None = None, *, cfg: config.Config | None = None, session=None, runner: Callable = subprocess.run) -> int:
     parser = argparse.ArgumentParser(description="Deploy the whole project.")
     parser.add_argument("--env", required=True, help="the environment in project.toml's [environments] to deploy")
     args = parser.parse_args(argv)
 
-    c = cfg if cfg is not None else config.load()
+    c = cfg if cfg is not None else load_config()
     session = session or boto3.Session(region_name=c.aws_region)
-    try:
-        c.sizing(args.env)
-        if not can_create_network(c, session):
+    c.sizing(args.env)
+    if not can_create_network(c, session):
+        raise DeployError(
+            "Your organization does not let this user create an internet gateway, so the template cannot create its own VPC.\n"
+            "Use a VPC that already exists:\n"
+            "  1. uv run --project infra python scripts/find_network.py       # which VPC and subnets can host the app\n"
+            "  2. uv run --project infra python scripts/prepare_network.py    # if none can, adds private subnets and a NAT to one\n"
+            "  3. put the [network] block they print in project.toml, then run this command again."
+        )
+    for script, extra in steps(c, args.env):
+        print(f"\n=== {script} ===", flush=True)
+        done = runner([sys.executable, str(SCRIPTS / script), *extra], cwd=ROOT)
+        if done.returncode != 0:
             raise DeployError(
-                "Your organization does not let this user create an internet gateway, so the template cannot create its own VPC.\n"
-                "Use a VPC that already exists:\n"
-                "  1. uv run --project infra python scripts/find_network.py       # which VPC and subnets can host the app\n"
-                "  2. uv run --project infra python scripts/prepare_network.py    # if none can, adds private subnets and a NAT to one\n"
-                "  3. put the [network] block they print in project.toml, then run this command again."
+                f"{script} failed (exit {done.returncode}). Fix the cause and run the same command again: the steps that "
+                f"finished change nothing.\n  uv run --project infra python scripts/deploy.py --env {args.env}\n"
+                f"or only this step:\n  uv run --project infra python scripts/{script} {' '.join(extra)}".rstrip()
             )
-        for script, extra in steps(c, args.env):
-            print(f"\n=== {script} ===", flush=True)
-            done = runner([sys.executable, str(SCRIPTS / script), *extra], cwd=ROOT)
-            if done.returncode != 0:
-                raise DeployError(
-                    f"{script} failed (exit {done.returncode}). Fix the cause and run the same command again: the steps that "
-                    f"finished change nothing.\n  uv run --project infra python scripts/deploy.py --env {args.env}\n"
-                    f"or only this step:\n  uv run --project infra python scripts/{script} {' '.join(extra)}".rstrip()
-                )
-        outputs = session.client("cloudformation").describe_stacks(StackName=c.app_stack)["Stacks"][0].get("Outputs", [])
-        url = next((o["OutputValue"] for o in outputs if o["OutputKey"] == f"{APP_ID}PublicUrl"), None)
-        if url is None:
-            raise DeployError(f"The stack {c.app_stack} has no {APP_ID}PublicUrl output, so there is no URL to show.")
-    except (DeployError, ValueError) as e:
-        print(e, file=sys.stderr)
-        return 1
-    except (ClientError, BotoCoreError) as e:
-        code = e.response["Error"]["Code"] if isinstance(e, ClientError) else type(e).__name__
-        print(f"AWS answered {code}. If your credentials expired or are missing, run `aws login` (or `aws sso login`) and try again.", file=sys.stderr)
-        return 1
+    url = outputs(session, c.app_stack).get(f"{APP_ID}PublicUrl")
+    if url is None:
+        raise DeployError(f"The stack {c.app_stack} has no {APP_ID}PublicUrl output, so there is no URL to show.")
 
     print(f"""
 All steps done. The app is at {url}

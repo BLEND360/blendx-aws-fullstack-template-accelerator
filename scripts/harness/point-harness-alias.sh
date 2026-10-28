@@ -41,12 +41,21 @@ if aws bedrock-agentcore-control get-harness-endpoint \
   --harness-id "$HARNESS_ID" \
   --endpoint-name "$ALIAS" \
   >/tmp/harness-endpoint-existing.json 2>/tmp/harness-endpoint-existing.err; then
-  echo "[point-harness-alias] Endpoint $ALIAS exists — updating to version $VERSION." >&2
-  aws bedrock-agentcore-control update-harness-endpoint \
-    --harness-id "$HARNESS_ID" \
-    --endpoint-name "$ALIAS" \
-    --target-version "$VERSION" \
-    --description "$DESCRIPTION"
+  live_version=$(jq -r '.endpoint.liveVersion // ""' /tmp/harness-endpoint-existing.json)
+  target_version=$(jq -r '.endpoint.targetVersion // ""' /tmp/harness-endpoint-existing.json)
+  status=$(jq -r '.endpoint.status // ""' /tmp/harness-endpoint-existing.json)
+  if [[ "$status" == "READY" && "$live_version" == "$VERSION" ]]; then
+    echo "[point-harness-alias] Endpoint $ALIAS already targets version $VERSION; no update needed." >&2
+  elif [[ "$status" == "CREATING" || "$status" == "UPDATING" ]] && [[ "$target_version" == "$VERSION" ]]; then
+    echo "[point-harness-alias] Endpoint $ALIAS is already transitioning to version $VERSION." >&2
+  else
+    echo "[point-harness-alias] Endpoint $ALIAS exists — updating to version $VERSION." >&2
+    aws bedrock-agentcore-control update-harness-endpoint \
+      --harness-id "$HARNESS_ID" \
+      --endpoint-name "$ALIAS" \
+      --target-version "$VERSION" \
+      --description "$DESCRIPTION"
+  fi
 elif grep -q "ResourceNotFoundException" /tmp/harness-endpoint-existing.err; then
   echo "[point-harness-alias] Endpoint $ALIAS does not exist — creating, pinned to version $VERSION." >&2
   aws bedrock-agentcore-control create-harness-endpoint \

@@ -2,15 +2,15 @@ import aws_cdk as cdk
 import pytest
 from aws_cdk.assertions import Template
 
-import config
 from definitions.app import app_specs
 from definitions.network import network_specs
 from deployment import DeployInputs
 from stacks.app import AppStack
 from stacks.network import NetworkStack
 from tests.test_app_definitions import EXPECTED_VARIABLES, INPUTS
+from tests.conftest import fixed_config
 
-C = config.load()
+C = fixed_config()
 ENV = cdk.Environment(account=C.aws_account, region=C.aws_region)
 
 

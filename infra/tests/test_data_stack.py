@@ -2,14 +2,14 @@ import aws_cdk as cdk
 import pytest
 from aws_cdk.assertions import Template
 
-import config
 from definitions.roles import role_specs
 from definitions.tables import OWNER_KEY, table_specs
 from specs.table import TableSpec
 from stacks.data import DataStack
 from stacks.roles import RolesStack
+from tests.conftest import fixed_config
 
-C = config.load()
+C = fixed_config()
 ENV = cdk.Environment(account=C.aws_account, region=C.aws_region)
 
 
@@ -47,6 +47,11 @@ def test_deleting_the_stack_or_replacing_a_table_never_deletes_data(template):
     for name, resource in tables(template).items():
         assert resource["DeletionPolicy"] == "Retain", name
         assert resource["UpdateReplacePolicy"] == "Retain", name
+
+
+def test_point_in_time_recovery_is_on(template):
+    for name, resource in tables(template).items():
+        assert resource["Properties"]["PointInTimeRecoverySpecification"] == {"PointInTimeRecoveryEnabled": True}, name
 
 
 def test_tables_declare_only_their_keys_so_no_conversation_content_can_be_indexed(template):

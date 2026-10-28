@@ -6,7 +6,7 @@ literally anywhere else.
 
 import re
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from pathlib import Path
 
 PROJECT_TOML = Path(__file__).resolve().parent.parent / "project.toml"
@@ -28,8 +28,7 @@ _COGNITO_RESERVED = ("aws", "amazon", "cognito")
 # The SPA's dev server; always an allowed return address for sign-in and sign-out.
 LOCAL_CALLBACK_URL = "http://localhost:5173/"
 
-# Platform convention (README, Architecture): the harness lives at
-# harness/app/assistant/ and its CloudFormation outputs are Harness<Pascal>*.
+# The harness lives at harness/app/assistant/ and its CloudFormation outputs are Harness<Pascal>*.
 HARNESS_NAME = "assistant"
 AGENTCORE_TARGET = "default"
 
@@ -108,6 +107,10 @@ class Config:
 
     def role_arn(self, role_name: str) -> str:
         return f"arn:aws:iam::{self.aws_account}:role/{role_name}"
+
+    @property
+    def diff_role(self) -> str:
+        return f"{self.name}-github-diff"
 
     # Sign-in (Cognito)
     @property
@@ -217,7 +220,24 @@ def load(path: Path = PROJECT_TOML) -> Config:
     with open(path, "rb") as f:
         raw = tomllib.load(f)
     project, harness = raw["project"], raw["harness"]
-    network = raw.get("network", {})
+    network = raw.get("network")
+    errors = []
+
+    model_ids = harness["model_ids"]
+    if not isinstance(model_ids, list):
+        errors.append("harness.model_ids: must be a list of model ids")
+        model_ids = []
+
+    sizing_keys = {f.name for f in fields(Sizing)}
+    environments = {}
+    for env, s in raw["environments"].items():
+        if unknown := sorted(set(s) - sizing_keys):
+            errors.append(f"environments.{env}: unknown keys {unknown}; valid: {sorted(sizing_keys)}")
+            continue
+        try:
+            environments[env] = Sizing(**s)
+        except TypeError as e:
+            errors.append(f"environments.{env}: {e}")
 
     config = Config(
         name=project["name"],
@@ -228,13 +248,12 @@ def load(path: Path = PROJECT_TOML) -> Config:
         harness_arn=harness.get("arn", ""),
         harness_endpoint=harness["endpoint"],
         harness_model_id=harness["model_id"],
-        model_ids=tuple(harness["model_ids"]),
+        model_ids=tuple(model_ids),
         auth_callback_urls=tuple(raw.get("auth", {}).get("callback_urls", [])),
-        environments={env: Sizing(**s) for env, s in raw["environments"].items()},
-        existing_network=ExistingNetwork(network.get("vpc_id", ""), dict(network.get("private_subnets", {}))) if network else None,
+        environments=environments,
+        existing_network=ExistingNetwork(network.get("vpc_id", ""), dict(network.get("private_subnets", {}))) if network is not None else None,
     )
 
-    errors = []
     if not _NAME.match(config.name):
         errors.append(f"project.name {config.name!r}: 3-24 chars, lowercase letters, digits, single hyphens")
     if not _ACCOUNT.match(config.aws_account):
