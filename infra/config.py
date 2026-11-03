@@ -73,6 +73,7 @@ class Config:
     model_ids: tuple[str, ...]
     auth_callback_urls: tuple[str, ...]
     environments: dict[str, Sizing]
+    image_retention_count: int = 30
     existing_network: ExistingNetwork | None = None
 
     @property
@@ -221,7 +222,16 @@ def load(path: Path = PROJECT_TOML) -> Config:
         raw = tomllib.load(f)
     project, harness = raw["project"], raw["harness"]
     network = raw.get("network")
+    ecr = raw.get("ecr", {})
     errors = []
+
+    if not isinstance(ecr, dict):
+        errors.append("ecr: must be a table")
+        ecr = {}
+    image_retention_count = ecr.get("image_retention_count", 30)
+    if type(image_retention_count) is not int or image_retention_count < 1:
+        errors.append(f"ecr.image_retention_count {image_retention_count!r}: must be a positive integer")
+        image_retention_count = 30
 
     model_ids = harness["model_ids"]
     if not isinstance(model_ids, list):
@@ -251,6 +261,7 @@ def load(path: Path = PROJECT_TOML) -> Config:
         model_ids=tuple(model_ids),
         auth_callback_urls=tuple(raw.get("auth", {}).get("callback_urls", [])),
         environments=environments,
+        image_retention_count=image_retention_count,
         existing_network=ExistingNetwork(network.get("vpc_id", ""), dict(network.get("private_subnets", {}))) if network is not None else None,
     )
 

@@ -45,10 +45,34 @@ All run as `uv run --project infra python scripts/<name>.py`.
 | `smoke_test.py --env dev` | Checks `/api/health` through the app's public CloudFront URL; `--url` works without AWS |
 | `bootstrap.py`, `deploy_data.py`, `deploy_auth.py`, `deploy_harness.py`, `create_user.py` | The individual steps |
 
-Before the first GitHub deployment, run `scripts/bootstrap.py` once from a machine with AWS credentials. Create
-the `dev` and `prod` GitHub Environments, then use the printed commands to set `AWS_DIFF_ROLE_ARN` and
-`AWS_REGION` at repository level and `AWS_DEPLOY_ROLE_ARN` plus `AWS_REGION` in each Environment. Restrict both
-Environments to `main` and require reviewers only for `prod`. No long-lived AWS keys are needed in GitHub.
+## Enable GitHub Actions deployments
+
+Complete these steps from a configured clone. Confirm `aws_account`, `aws_region`,
+`github_org`, and `github_repo` identify the intended account and repository before
+running any AWS command.
+
+1. Authenticate locally and verify `aws sts get-caller-identity`; its account ID
+   must match `project.toml`.
+2. Run `uv run --project infra python scripts/bootstrap.py` once. It bootstraps CDK,
+   creates the GitHub OIDC provider when needed, deploys the roles, and prints the
+   `gh variable set` commands. Review each ARN and region before using them.
+3. In GitHub repository **Settings → Environments**, create `dev` and `prod`.
+   Allow deployments from `main` only for both; configure required reviewers for
+   `prod` and no reviewer gate for `dev`.
+4. In repository **Settings → Secrets and variables → Actions → Variables**, set
+   `AWS_DIFF_ROLE_ARN` and `AWS_REGION` using the printed values.
+5. In each Environment's variables, set `AWS_DEPLOY_ROLE_ARN` and `AWS_REGION`
+   using its matching values. No long-lived AWS keys belong in GitHub secrets.
+6. Protect `main` in repository **Settings → Rules → Rulesets** (or branch
+   protection rules): require pull requests and the `api`, `infra`, and `web`
+   CI checks before merging; do not allow direct pushes that bypass review.
+7. Push the configured repository to `main` or dispatch `deploy.yml` selecting
+   `dev`; inspect the workflow's CI, OIDC, ordered deploy and `/api/health` smoke
+   test. Use `prod` only after `dev` succeeds and the reviewer approves.
+
+Until ST-12 supports separate accounts per environment, both Environments target
+the account configured in `project.toml`. The workflow requires the roles to be
+deployed and the configured GitHub repository to match the running repository.
 
 ## Resources are data
 

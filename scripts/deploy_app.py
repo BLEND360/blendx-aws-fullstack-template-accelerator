@@ -42,6 +42,7 @@ PROJECT_TOML = config.PROJECT_TOML
 WEB = ROOT / "frontend" / "web"
 CLOUDFRONT_PREFIX_LIST = "com.amazonaws.global.cloudfront.origin-facing"
 _IMAGE_TAG = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$")
+ACTIVE_IMAGE_TAG = "active"
 
 
 # --- validations and what is resolved from AWS (nothing is created yet) -----------------------------------------
@@ -166,6 +167,44 @@ def current_image_tag(c: config.Config, session) -> str | None:
     image = containers[0].get("image", "")
     tag = image.rsplit(":", 1)[-1] if ":" in image else ""
     return tag if tag and tag != "pending" else None
+
+
+def protect_running_image(c: config.Config, session) -> None:
+    """Keep the tag that ECS actually runs outside the repository's normal image-count expiry rule."""
+    session.client("ecs").get_waiter("services_stable").wait(cluster=c.cluster, services=[c.service])
+    tag = current_image_tag(c, session)
+    if not tag:
+        raise DeployError(
+            f"Could not determine a deployable image for ECS service {c.service} after the stack deployment; "
+            "the existing ECR active tag was left unchanged."
+        )
+
+    ecr = session.client("ecr")
+    response = ecr.batch_get_image(
+        repositoryName=c.ecr_repository,
+        imageIds=[{"imageTag": tag}, {"imageTag": ACTIVE_IMAGE_TAG}],
+    )
+    images = response.get("images", [])
+    target = next((image for image in images if image.get("imageId", {}).get("imageTag") == tag), None)
+    if not target or not target.get("imageManifest"):
+        raise DeployError(
+            f"Could not resolve the manifest for ECS image {tag!r} in ECR repository {c.ecr_repository}; "
+            "the existing active tag was left unchanged."
+        )
+
+    active = next((image for image in images if image.get("imageId", {}).get("imageTag") == ACTIVE_IMAGE_TAG), None)
+    if active and active.get("imageId", {}).get("imageDigest") == target.get("imageId", {}).get("imageDigest"):
+        return
+
+    arguments = {
+        "repositoryName": c.ecr_repository,
+        "imageManifest": target["imageManifest"],
+        "imageTag": ACTIVE_IMAGE_TAG,
+    }
+    if media_type := target.get("imageManifestMediaType"):
+        arguments["imageManifestMediaType"] = media_type
+    ecr.put_image(**arguments)
+    print(f"Protected the image ECS runs ({tag}) from ECR lifecycle expiry.")
 
 
 # --- the SPA, the return address, the end -----------------------------------------------------------------------
@@ -316,6 +355,7 @@ def main(argv: list[str] | None = None) -> int:
                     raise DeployError("The stack step requires an image tag; pass --image-tag or --keep-image.")
                 inputs = dataclasses.replace(inputs, image_tag=image_tag)
                 deploy_stacks(c, inputs)
+                protect_running_image(c, session)
             else:
                 public_url = deploy_spa(c, session, auth, invalidate=args.invalidate)
     except projecttoml.ProjectTomlError as e:

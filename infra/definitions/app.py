@@ -55,6 +55,7 @@ def app_specs(c: Config, inputs: DeployInputs) -> list[AppSpec]:
                 memory=size.memory,
                 desired_count=size.desired_count if inputs.image_tag else 0,
                 image_tag=inputs.image_tag,
+                image_retention_count=c.image_retention_count,
                 container_port=CONTAINER_PORT,
                 health_path=HEALTH_PATH,
                 alb_idle_timeout_seconds=ALB_IDLE_TIMEOUT_SECONDS,

@@ -175,6 +175,11 @@ def deploy_role(c: Config) -> RoleSpec:
                 resources=[f"arn:aws:ecr:{region}:{account}:repository/{c.ecr_repository}"],
             ),
             iam.PolicyStatement(
+                sid="ReadApiImageManifestForDeploy",
+                actions=["ecr:BatchGetImage"],
+                resources=[f"arn:aws:ecr:{region}:{account}:repository/{c.ecr_repository}"],
+            ),
+            iam.PolicyStatement(
                 sid="ReadHarnessForDeploy",
                 actions=["bedrock-agentcore:GetHarness"],
                 resources=[f"arn:aws:bedrock-agentcore:{region}:{account}:harness/*"],

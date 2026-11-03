@@ -17,6 +17,7 @@ from stacks.network import import_vpc
 
 # What the service runs while no image has been pushed: never pulled, because it has no tasks then.
 PLACEHOLDER_TAG = "pending"
+ACTIVE_IMAGE_TAG = "active"
 JWT_SECRET_VARIABLE = "AUTH_JWT_SECRET"
 # A client-side route (/chat, /items/3) has no file behind it: serve the entry page and let the router
 # take over. Files have an extension, so they are left alone. Done here, not as distribution-level error
@@ -58,7 +59,26 @@ class AppStack(Stack):
         private = ec2.SubnetSelection(subnets=vpc.private_subnets)
 
         repository = ecr.Repository(
-            scope, "Repository", repository_name=api.repository, removal_policy=RemovalPolicy.RETAIN, image_scan_on_push=True
+            scope,
+            "Repository",
+            repository_name=api.repository,
+            removal_policy=RemovalPolicy.RETAIN,
+            image_scan_on_push=True,
+            image_tag_mutability=ecr.TagMutability.IMMUTABLE_WITH_EXCLUSION,
+            image_tag_mutability_exclusion_filters=[ecr.ImageTagMutabilityExclusionFilter.wildcard(ACTIVE_IMAGE_TAG)],
+            lifecycle_rules=[
+                ecr.LifecycleRule(
+                    description="Keep the image currently used by the ECS service",
+                    max_image_count=1,
+                    tag_status=ecr.TagStatus.TAGGED,
+                    tag_prefix_list=[ACTIVE_IMAGE_TAG],
+                ),
+                ecr.LifecycleRule(
+                    description="Keep the configured number of recent images",
+                    max_image_count=api.image_retention_count,
+                    tag_status=ecr.TagStatus.ANY,
+                ),
+            ],
         )
         cluster = ecs.Cluster(scope, "Cluster", cluster_name=api.cluster, vpc=vpc)
 

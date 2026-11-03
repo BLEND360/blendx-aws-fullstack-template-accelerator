@@ -44,23 +44,62 @@ scripts/              # setup, deploy, destroy, and the network helpers (see "De
 Prerequisites: [uv](https://docs.astral.sh/uv/), Node.js 22+, Docker (optional),
 and for the AWS steps the AWS CLI with credentials for the target account.
 
+### Clone and configure
+
+Start from a fresh copy of this template (or your team's repository created from it):
+
+```bash
+git clone <repository-url> <project-directory>
+cd <project-directory>
+```
+
+Before running setup, edit `project.toml`: choose a unique lowercase project name,
+the target AWS account and region, your GitHub organization and repository, and the
+model/harness settings. If using an existing AgentCore harness, set its ARN and
+endpoint. Review the defaults and network requirements in `project.toml`; do not
+use the sample account or deploy into an account you have not verified.
+
 ### 1. Run it locally (no AWS needed)
 
 ```bash
-# edit project.toml first (name, aws_account, aws_region, github_org, github_repo)
-python scripts/setup.py       # validates project.toml, writes the .env files and the harness config; deletes itself
-docker compose up --build     # web http://localhost:5173, API http://localhost:8000/health
+python scripts/setup.py       # one time: validates config and creates local .env files
 ```
+
+`setup.py` removes itself after it succeeds. Treat this as a one-time onboarding
+step; start from a fresh clone if you need to repeat setup. The generated `.env`
+files are local and ignored by Git. To run the chat without AWS, start Compose in
+replay mode:
+
+```bash
+# Bash / Git Bash
+HARNESS_REPLAY=true docker compose up --build
+
+# PowerShell
+$env:HARNESS_REPLAY = "true"
+docker compose up --build
+```
+
+Open http://localhost:5173 (or the port selected by `WEB_PORT`). To run with a configured live harness instead, set
+`HARNESS_REPLAY=false` (or leave it unset) and use the AWS profile with invoke
+access described below.
+
+This serves recorded turns and needs no AWS credentials or deployed harness. A
+message containing `tool` exercises the recorded tool round trip. For a live
+AgentCore call, use the real harness flow below and an AWS identity with invoke
+permission; replay is not a connectivity or deployment test. The API container
+mounts `~/.aws` read-only and forwards `AWS_PROFILE` when set. Create that folder
+if it does not exist (`mkdir ~/.aws`); if your credential provider must write to
+it, use a local ignored Compose override with a writable mount. If host ports 8000
+or 5173 are occupied, set `API_PORT` or `WEB_PORT` to free host ports before
+starting Compose (for example, PowerShell: `$env:API_PORT = "18000"`).
 
 Locally the API keeps sessions and items in memory and skips sign-in
 (`LOCAL_AUTH_BYPASS=true`). `/ready` reports `degraded` until you have AWS
-credentials and a harness; that is expected. To chat without any harness, start
-the API with recorded answers (`HARNESS_REPLAY=true`, see
-[frontend/web/README.md](frontend/web/README.md#showing-it-without-aws)).
+credentials and a harness; that is expected. See the replay and live-harness
+distinction above and [frontend/web/README.md](frontend/web/README.md#showing-it-without-aws).
 
 Without Docker: [backend/api/README.md](backend/api/README.md) and
-[frontend/web/README.md](frontend/web/README.md). `docker compose` mounts
-`~/.aws`, so that folder must exist (`mkdir ~/.aws` if you have no credentials).
+[frontend/web/README.md](frontend/web/README.md).
 
 ### 2. Deploy to AWS
 
@@ -207,7 +246,9 @@ credentials in `~/.aws`, and restart. `/ready` should then report `ok`.
 `.github/workflows/ci.yml` runs API, infrastructure and web checks on pull requests. Same-repository PRs also
 get a read-only `cdk diff --method=template`; forks run the checks without AWS access. A push to `main` runs
 `.github/workflows/deploy.yml` after CI succeeds. It deploys roles, sign-in, data and harness, then updates the
-API image, app stack, SPA and public health check. A manual run can choose `dev` or `prod`.
+API image, app stack, SPA and public health check. A manual run can choose `dev` or `prod`. See
+[infra/README.md](infra/README.md#enable-github-actions-deployments) for the exact AWS bootstrap,
+OIDC variables, Environments and `main` branch protection steps.
 
 Before enabling the workflow, run `uv run --project infra python scripts/bootstrap.py` once from a machine with
 AWS credentials for the account in `project.toml`. It bootstraps CDK, creates the GitHub OIDC provider if needed,
@@ -269,4 +310,4 @@ environment) so a template-born harness can graduate into the Hub unchanged.
 ### Out of scope for v1
 
 Gateways, MCP tool runtimes, knowledge bases, evaluations and schedulers;
-relational databases; custom domains, WAF, autoscaling.
+relational databases; custom domains, WAF, autoscaling.\n

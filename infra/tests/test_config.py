@@ -60,6 +60,21 @@ def test_environments_parsed(tmp_path):
     assert c.environments == {"dev": config.Sizing(1, 256, 512)}
 
 
+def test_ecr_image_retention_defaults_to_thirty(tmp_path):
+    assert config.load(write(tmp_path, VALID)).image_retention_count == 30
+
+
+def test_ecr_image_retention_can_be_configured(tmp_path):
+    c = config.load(write(tmp_path, VALID + "\n[ecr]\nimage_retention_count = 12\n"))
+    assert c.image_retention_count == 12
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "true", '"30"'])
+def test_ecr_image_retention_must_be_a_positive_integer(tmp_path, value):
+    with pytest.raises(ValueError, match=r"ecr\.image_retention_count"):
+        config.load(write(tmp_path, VALID + f"\n[ecr]\nimage_retention_count = {value}\n"))
+
+
 @pytest.mark.parametrize(
     "old,new",
     [

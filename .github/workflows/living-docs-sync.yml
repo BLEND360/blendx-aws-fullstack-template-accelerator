@@ -1,0 +1,60 @@
+# Publishes docs/ to blendx-living-docs: opens or updates one persistent PR there.
+# Needs the LIVING_DOCS_SYNC_TOKEN secret (contents + pull requests write on blendx-living-docs).
+name: Living docs sync
+
+on:
+  push:
+    branches: [main]
+    paths: ['docs/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: living-docs-sync
+  cancel-in-progress: false
+
+env:
+  DEST: aws/apps/blendx-aws-fullstack-app-template/technical
+  SYNC_BRANCH: sync/from-blendx-aws-fullstack-template-accelerator
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: source
+      - uses: actions/checkout@v4
+        with:
+          repository: BLEND360/blendx-living-docs
+          token: ${{ secrets.LIVING_DOCS_SYNC_TOKEN }}
+          path: blendx-living-docs
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Migrate docs
+        working-directory: blendx-living-docs
+        run: node scripts/generic-migrate-docs.mjs --source ../source/docs --dest "$DEST"
+      - name: Open or update the sync PR
+        working-directory: blendx-living-docs
+        env:
+          GH_TOKEN: ${{ secrets.LIVING_DOCS_SYNC_TOKEN }}
+        run: |
+          if [ -z "$(git status --porcelain)" ]; then
+            echo 'Nothing to sync.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git checkout -B "$SYNC_BRANCH"
+          git add -A content scripts/manifests
+          git commit -m "docs: sync from blendx-aws-fullstack-template-accelerator@${GITHUB_SHA}"
+          git push --force origin "$SYNC_BRANCH"
+          if [ -z "$(gh pr list --head "$SYNC_BRANCH" --base main --json number --jq '.[0].number')" ]; then
+            gh pr create --base main --head "$SYNC_BRANCH" \
+              --title 'docs: sync from blendx-aws-fullstack-template-accelerator' \
+              --body 'Automated sync of docs/ from BLEND360/blendx-aws-fullstack-template-accelerator.'
+          fi

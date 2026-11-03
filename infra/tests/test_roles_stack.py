@@ -131,6 +131,7 @@ def test_deploy_role_grants(template):
         "ecs:DescribeServices",
         "ecs:DescribeTaskDefinition",
         "ecr:DescribeRepositories",
+        "ecr:BatchGetImage",
         "bedrock-agentcore:GetHarness",
         "cognito-idp:DescribeUserPoolClient",
         "ecr:GetAuthorizationToken",
@@ -196,6 +197,13 @@ def test_deploy_role_grants(template):
             "deploy_app",
             "repository_exists",
             "ecr:DescribeRepositories",
+            f"arn:aws:ecr:{C.aws_region}:{ACCOUNT}:repository/{C.ecr_repository}",
+        ),
+        (
+            "GithubDeployRole",
+            "deploy_app",
+            "protect_running_image",
+            "ecr:BatchGetImage",
             f"arn:aws:ecr:{C.aws_region}:{ACCOUNT}:repository/{C.ecr_repository}",
         ),
         (

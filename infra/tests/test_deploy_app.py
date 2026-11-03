@@ -44,6 +44,19 @@ class World:
         self.auth_deploy_error: Exception | None = None
         self.image_id, self.layers = IMAGE_ID, list(LAYERS)
         self.running_tag = "c" * 40 + "-1"
+        if not repo:
+            self.running_tag = None
+        self.image_digests: dict[str, str] = {}
+        self.manifests: dict[str, str] = {}
+        self.active_digest: str | None = None
+        self.unresolvable_tags: set[str] = set()
+        self.put_image_error: ClientError | None = None
+        self.ecs_wait_error: ClientError | None = None
+        self.app_deploy_error: Exception | None = None
+        self.rollback_on_deploy = False
+        if self.running_tag:
+            digest = self._add_image(self.running_tag)
+            self.active_digest = digest
         self.docker_configs: list[tuple] = []  # (command, config dir, config.json text) for each docker call given its own config
         self.events: list[tuple] = []  # ("cdk", ...), ("run", ...), ("invalidate", ...), ("put", key), ("delete", key)
 
@@ -97,7 +110,40 @@ class World:
             def describe_images(self, repositoryName, imageIds):
                 if not world.tag_in_ecr:
                     raise missing("ImageNotFoundException")
+                for image in imageIds:
+                    if "imageTag" in image:
+                        world._add_image(image["imageTag"])
                 return {"imageDetails": [{}]}
+
+            def batch_get_image(self, repositoryName, imageIds):
+                images, failures = [], []
+                for image_id in imageIds:
+                    tag = image_id["imageTag"]
+                    if tag == "active":
+                        digest = world.active_digest
+                    elif tag in world.unresolvable_tags:
+                        digest = None
+                    else:
+                        digest = world.image_digests.get(tag)
+                    if not digest:
+                        failures.append({"imageId": image_id, "failureCode": "ImageNotFound", "failureReason": "not found"})
+                        continue
+                    manifest = world.manifests.get(digest)
+                    images.append({
+                        "imageId": {"imageTag": tag, "imageDigest": digest},
+                        "imageManifest": manifest,
+                        "imageManifestMediaType": "application/vnd.oci.image.manifest.v1+json",
+                    })
+                return {"images": images, "failures": failures}
+
+            def put_image(self, repositoryName, imageManifest, imageTag, **kwargs):
+                if world.put_image_error:
+                    raise world.put_image_error
+                digest = next((d for d, manifest in world.manifests.items() if manifest == imageManifest), None)
+                assert digest is not None
+                world.active_digest = digest
+                world.events.append(("ecr_put_image", repositoryName, imageTag, digest))
+                return {"image": {"imageId": {"imageTag": imageTag, "imageDigest": digest}}}
 
             def get_authorization_token(self):
                 token = base64.b64encode(b"AWS:s3cr3t-password").decode()
@@ -152,6 +198,18 @@ class World:
         world, c = self, self.c
 
         class Ecs:
+            def get_waiter(self, name):
+                assert name == "services_stable"
+
+                class Waiter:
+                    def wait(self, cluster, services):
+                        assert cluster == c.cluster and services == [c.service]
+                        world.events.append(("ecs_wait", cluster, tuple(services)))
+                        if world.ecs_wait_error:
+                            raise world.ecs_wait_error
+
+                return Waiter()
+
             def describe_services(self, cluster, services):
                 assert cluster == c.cluster and services == [c.service]
                 if world.running_tag is None:
@@ -172,8 +230,15 @@ class World:
                 raise self.auth_deploy_error
             self.live_callbacks = list(tomllib.loads(self.toml_path.read_text(encoding="utf-8")).get("auth", {}).get("callback_urls", []))
         if args[0] == "deploy" and self.c.app_stack in args:
+            if self.app_deploy_error:
+                raise self.app_deploy_error
             self.stacks |= {self.c.app_stack}
             self.repo = True  # the app stack creates the repository
+            if not self.rollback_on_deploy:
+                context = {arg.split("=", 1)[0]: arg.split("=", 1)[1] for arg in args if arg.startswith("image_tag=")}
+                if context.get("image_tag"):
+                    self.running_tag = context["image_tag"]
+                    self._add_image(self.running_tag)
 
     def run(self, *cmd, cwd=None, env=None, capture=False):
         self.events.append(("run", cmd, env))
@@ -184,7 +249,15 @@ class World:
             return self.image_id + "\n"
         if cmd[:3] == ("docker", "image", "inspect"):
             return json.dumps(self.layers)
+        if cmd[:2] == ("docker", "push"):
+            tag = cmd[2].rsplit(":", 1)[-1]
+            self._add_image(tag)
         return ""
+
+    def _add_image(self, tag: str) -> str:
+        digest = self.image_digests.setdefault(tag, "sha256:" + hashlib.sha256(tag.encode()).hexdigest())
+        self.manifests.setdefault(digest, json.dumps({"tag": tag}))
+        return digest
 
     # --- queries over the record ---
     def kinds(self):
@@ -378,6 +451,7 @@ def test_external_image_tag_is_pushed_and_written_to_github_output(deploy_app, m
     assert any(f"{c.ecr_repository}:{tag}" in part for part in world.commands("docker", "push")[0])
     assert output.read_text(encoding="utf-8") == f"image_tag={tag}\n"
     assert not [call for call in world.cdk_calls() if c.app_stack in call]
+    assert not [event for event in world.events if event[0] == "ecr_put_image"]
 
 
 def test_external_image_tag_already_in_ecr_fails_without_pushing(deploy_app, monkeypatch, tmp_path, capsys):
@@ -405,6 +479,82 @@ def test_stack_keep_image_reads_the_ecs_task_definition(deploy_app, monkeypatch,
     assert go(deploy_app, "--step", "stack", "--keep-image") == 0
     (call,) = [call for call in world.cdk_calls() if c.app_stack in call]
     assert context(call)["image_tag"] == world.running_tag
+
+
+def test_a_successful_stack_protects_the_image_ecs_reports_as_running(deploy_app, monkeypatch, tmp_path):
+    c, world, _ = arrange(deploy_app, monkeypatch, tmp_path)
+
+    assert go(deploy_app) == 0
+    (put,) = [event for event in world.events if event[0] == "ecr_put_image"]
+    assert put[1:3] == (c.ecr_repository, "active")
+    assert world.active_digest == world.image_digests[world.running_tag]
+    stack_event = max(i for i, e in enumerate(world.events) if e[0] == "cdk" and c.app_stack in e)
+    marker_event = next(i for i, e in enumerate(world.events) if e[0] == "ecr_put_image")
+    assert marker_event > stack_event
+    assert world.events.index(next(e for e in world.events if e[0] == "ecs_wait")) < marker_event
+
+
+def test_a_repeat_deploy_does_not_rewrite_the_active_marker(deploy_app, monkeypatch, tmp_path):
+    c, world, _ = arrange(deploy_app, monkeypatch, tmp_path, tag_in_ecr=True)
+    world.running_tag = TAG
+    world.active_digest = world._add_image(TAG)
+
+    assert go(deploy_app) == 0
+    assert not [event for event in world.events if event[0] == "ecr_put_image"]
+
+
+def test_a_service_rollback_keeps_its_existing_active_image(deploy_app, monkeypatch, tmp_path):
+    c, world, _ = arrange(deploy_app, monkeypatch, tmp_path)
+    previous_tag = world.running_tag
+    previous_digest = world.active_digest
+    world.rollback_on_deploy = True
+
+    assert go(deploy_app) == 0
+    assert world.running_tag == previous_tag and world.active_digest == previous_digest
+    assert not [event for event in world.events if event[0] == "ecr_put_image"]
+
+
+def test_a_failed_stack_deploy_keeps_its_existing_active_image(deploy_app, monkeypatch, tmp_path):
+    c, world, _ = arrange(deploy_app, monkeypatch, tmp_path)
+    previous_tag = world.running_tag
+    previous_digest = world.active_digest
+    world.app_deploy_error = subprocess.CalledProcessError(1, ["cdk", "deploy"])
+
+    assert go(deploy_app) == 1
+    assert world.running_tag == previous_tag and world.active_digest == previous_digest
+    assert not [event for event in world.events if event[0] == "ecr_put_image"]
+
+
+def test_an_unresolvable_running_image_does_not_move_the_active_marker(deploy_app, monkeypatch, tmp_path, capsys):
+    c, world, _ = arrange(deploy_app, monkeypatch, tmp_path)
+    previous_digest = world.active_digest
+    world.unresolvable_tags.add(TAG)
+
+    assert go(deploy_app) == 1
+    assert "could not resolve" in capsys.readouterr().err.lower()
+    assert world.active_digest == previous_digest
+    assert not [event for event in world.events if event[0] == "ecr_put_image"]
+
+
+def test_an_ecr_marker_update_error_preserves_the_existing_active_image(deploy_app, monkeypatch, tmp_path, capsys):
+    c, world, _ = arrange(deploy_app, monkeypatch, tmp_path)
+    previous_digest = world.active_digest
+    world.put_image_error = missing("AccessDeniedException", "not allowed")
+
+    assert go(deploy_app) == 1
+    assert "AccessDeniedException" in capsys.readouterr().err
+    assert world.active_digest == previous_digest
+
+
+def test_an_unstable_ecs_service_does_not_move_the_active_marker(deploy_app, monkeypatch, tmp_path, capsys):
+    c, world, _ = arrange(deploy_app, monkeypatch, tmp_path)
+    previous_digest = world.active_digest
+    world.ecs_wait_error = missing("ServiceNotStableException", "not stable")
+
+    assert go(deploy_app) == 1
+    assert "ServiceNotStableException" in capsys.readouterr().err
+    assert world.active_digest == previous_digest
+    assert not [event for event in world.events if event[0] == "ecr_put_image"]
 
 
 def test_stack_without_tag_or_running_image_fails_actionably(deploy_app, monkeypatch, tmp_path, capsys):

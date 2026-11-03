@@ -6,13 +6,14 @@ services:
     # The same image ECS runs.
     build: .
     ports:
-      - "8000:8000"
+      - "${API_PORT:-8000}:8000"
       # The web container shares this container's network (see `web`), so its
       # dev server is published here.
-      - "5173:5173"
+      - "${WEB_PORT:-5173}:5173"
     env_file: backend/api/.env
     environment:
       - AWS_PROFILE  # passed through only when set on the host
+      - HARNESS_REPLAY=${HARNESS_REPLAY:-false}  # set true to use recorded turns without AWS
     volumes:
       # Local AWS credentials, read-only, for /ready and harness calls.
       - ~/.aws:/home/app/.aws:ro

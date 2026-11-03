@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -81,6 +82,12 @@ def test_the_environment_decides_size():
     assert (api.cpu, api.memory) == (dev.cpu, dev.memory)
     prod = spec(DeployInputs(**{**vars(INPUTS), "env": "prod"})).api
     assert (prod.cpu, prod.memory, prod.desired_count) == (C.sizing("prod").cpu, C.sizing("prod").memory, 2)
+
+
+def test_the_configured_ecr_image_retention_reaches_the_api_spec():
+    custom = replace(C, image_retention_count=12)
+    (custom_spec,) = app_specs(custom, INPUTS)
+    assert custom_spec.api.image_retention_count == 12
 
 
 def test_with_an_image_the_service_runs_the_configured_number_of_tasks():

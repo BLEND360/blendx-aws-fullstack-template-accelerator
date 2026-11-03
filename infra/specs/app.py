@@ -18,6 +18,7 @@ class ApiSpec:
     memory: int
     desired_count: int  # 0 while there is no image to run
     image_tag: str  # empty: no image has been pushed yet
+    image_retention_count: int  # latest versioned images to keep in ECR, besides the active image if older
     container_port: int
     health_path: str
     alb_idle_timeout_seconds: int

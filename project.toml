@@ -22,6 +22,11 @@ github_repo = "my-app"          # repository the deploy role trusts (GitHub OIDC
 # Add the deployed app's public URL, with a trailing slash, once it exists.
 # callback_urls = ["https://app.example.com/"]
 
+[ecr]
+# Keep the most recent images for rollback; the currently running image is retained separately.
+# 30 is about six weeks at one deployment per workday. Set a positive integer to adjust cost/rollback history.
+image_retention_count = 30
+
 [harness]
 # Leave empty to deploy and use the template's starter harness.
 # Set to an existing harness ARN to consume that one instead; the starter

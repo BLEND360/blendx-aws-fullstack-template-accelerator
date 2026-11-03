@@ -1,3 +1,5 @@
+import json
+
 import aws_cdk as cdk
 import pytest
 from aws_cdk.assertions import Template
@@ -47,6 +49,54 @@ def test_names_come_from_the_configuration(template):
 
 def test_the_image_repository_is_kept_when_the_stack_goes(template):
     assert only(template, "AWS::ECR::Repository")["DeletionPolicy"] == "Retain"
+
+
+def test_version_tags_are_immutable_except_for_the_reserved_active_marker(template):
+    properties = only(template, "AWS::ECR::Repository")["Properties"]
+    assert properties["ImageTagMutability"] == "IMMUTABLE_WITH_EXCLUSION"
+    assert properties["ImageTagMutabilityExclusionFilters"] == [{
+        "ImageTagMutabilityExclusionFilterType": "WILDCARD",
+        "ImageTagMutabilityExclusionFilterValue": "active",
+    }]
+
+
+def test_ecr_lifecycle_keeps_the_active_image_then_the_configured_recent_images(template):
+    properties = only(template, "AWS::ECR::Repository")["Properties"]
+    rules = json.loads(properties["LifecyclePolicy"]["LifecyclePolicyText"])["rules"]
+    assert [rule["rulePriority"] for rule in rules] == [1, 2]
+    assert rules[0]["selection"] == {
+        "tagStatus": "tagged", "tagPrefixList": ["active"], "countType": "imageCountMoreThan", "countNumber": 1,
+    }
+    assert rules[1]["selection"] == {
+        "tagStatus": "any", "countType": "imageCountMoreThan", "countNumber": C.image_retention_count,
+    }
+
+
+def test_the_lifecycle_policy_uses_the_configured_image_count():
+    from dataclasses import replace
+
+    app_spec, = app_specs(C, INPUTS)
+    customized = replace(app_spec, api=replace(app_spec.api, image_retention_count=12))
+    properties = only(synth([customized]), "AWS::ECR::Repository")["Properties"]
+    rules = json.loads(properties["LifecyclePolicy"]["LifecyclePolicyText"])["rules"]
+    assert rules[1]["selection"]["countNumber"] == 12
+
+
+def test_changing_retention_updates_the_policy_without_changing_the_repository_resource():
+    from dataclasses import replace
+
+    app_spec, = app_specs(C, INPUTS)
+    customized = replace(app_spec, api=replace(app_spec.api, image_retention_count=12))
+    base_repositories = synth().find_resources("AWS::ECR::Repository")
+    changed_repositories = synth([customized]).find_resources("AWS::ECR::Repository")
+    assert base_repositories.keys() == changed_repositories.keys()
+    (logical_id,) = base_repositories
+    base = base_repositories[logical_id]
+    changed = changed_repositories[logical_id]
+    assert {k: v for k, v in base["Properties"].items() if k != "LifecyclePolicy"} == {
+        k: v for k, v in changed["Properties"].items() if k != "LifecyclePolicy"
+    }
+    assert base["DeletionPolicy"] == changed["DeletionPolicy"] == "Retain"
 
 
 def test_the_service_has_no_public_ip(template):

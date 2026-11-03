@@ -36,11 +36,13 @@ parses it (the same events however the network splits them).
 Start the API with recorded answers and the whole chat works with no credentials and no harness:
 
 ```bash
-cd backend/api
-HARNESS_REPLAY=true uv run uvicorn app.main:app --reload
+# From the repository root, after `python scripts/setup.py`:
+HARNESS_REPLAY=true docker compose up --build
 ```
 
-In PowerShell, set the variable first: `$env:HARNESS_REPLAY = "true"`.
+Open http://localhost:5173 (or the port selected by `WEB_PORT`). In PowerShell, set the variable first:
+`$env:HARNESS_REPLAY = "true"; docker compose up --build`.
+Compose passes this host variable to the API container; it defaults to `false`.
 
 A message containing the word **tool** plays the recorded turn that calls a tool (and the tool really
 runs); anything else plays the recorded text turn. The answer does not depend on the question, so the
