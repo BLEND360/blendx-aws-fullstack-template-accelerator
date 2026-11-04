@@ -36,6 +36,18 @@ jobs:
       contents: read
       id-token: write
     steps:
+      - name: Check deploy variables
+        env:
+          DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          REGION: ${{ vars.AWS_REGION }}
+        run: |
+          missing=""
+          [ -z "$DEPLOY_ROLE_ARN" ] && missing="$missing AWS_DEPLOY_ROLE_ARN"
+          [ -z "$REGION" ] && missing="$missing AWS_REGION"
+          if [ -n "$missing" ]; then
+            echo "::error title=Missing deploy variables::Set$missing in the '${{ inputs.environment || 'dev' }}' environment (Settings > Environments). See the README, section GitHub Actions."
+            exit 1
+          fi
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0

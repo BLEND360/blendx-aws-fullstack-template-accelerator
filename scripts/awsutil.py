@@ -62,7 +62,8 @@ def check_account(c: config.Config, session) -> None:
     if caller != c.aws_account:
         raise DeployError(
             f"Your credentials are for account {caller}, but project.toml says {c.aws_account}. "
-            "Switch profile or fix project.toml."
+            "Switch profile, or set aws_account in project.toml to the account you mean to deploy to "
+            "(`aws sts get-caller-identity` shows the one your credentials belong to)."
         )
 
 

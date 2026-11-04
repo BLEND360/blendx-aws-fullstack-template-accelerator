@@ -41,13 +41,15 @@ scripts/              # setup, deploy, destroy, and the network helpers (see "De
 
 ## Quick start
 
-Prerequisites: [uv](https://docs.astral.sh/uv/), Node.js 22+, Docker (optional),
+Prerequisites: [uv](https://docs.astral.sh/uv/), Node.js 22 or 24 (CDK warns on newer versions), Docker (optional),
 and for the AWS steps the AWS CLI with credentials for the target account.
 
 ### 1. Run it locally (no AWS needed)
 
 ```bash
-# edit project.toml first (name, aws_account, aws_region, github_org, github_repo)
+# edit project.toml first (name, aws_account, aws_region, github_org, github_repo).
+# aws_account ships as the placeholder 123456789012: set it to the account your credentials belong to
+# (`aws sts get-caller-identity --query Account --output text`)
 python scripts/setup.py       # validates project.toml, writes the .env files and the harness config; deletes itself
 docker compose up --build     # web http://localhost:5173, API http://localhost:8000/health
 ```
@@ -188,6 +190,7 @@ credentials in `~/.aws`, and restart. `/ready` should then report `ok`.
 |---|---|
 | `ModuleNotFoundError: boto3` | You ran `bootstrap.py`, `deploy_data.py`, `deploy_auth.py`, `deploy_app.py`, `create_user.py` or `deploy.py` with plain `python`. Use `uv run --project infra python ...` |
 | "Your credentials are for account X, but project.toml says Y" | Wrong profile or `aws_account` in `project.toml`. Fix one and retry |
+| An error response carries a `requestId` (also the `X-Request-Id` header) | Search the API logs for it. Deployed: CloudWatch log group `/<project name>/api`, Logs Insights `fields @timestamp, event, exception \| filter request_id = "<id>"`. Local: `docker compose logs api \| grep <id>` |
 | `Your session has expired ... Please reauthenticate using 'aws login'` (API logs, `/ready` degraded with `data_error`) | Run `aws login` (or `aws sso login`), then restart the API |
 | `OSError: [Errno 30] Read-only file system` in the container after `aws login` | `docker compose` mounts `~/.aws` read-only; credentials from `aws login` need it writable. Add a git-ignored `docker-compose.override.yml` that mounts `~/.aws` without `:ro` |
 | `/ready` is `degraded` with `harness_misconfigured` | `HARNESS_ARN` is empty. Deploy the harness or use `HARNESS_REPLAY=true` |
