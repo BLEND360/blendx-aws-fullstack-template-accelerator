@@ -108,10 +108,9 @@ uv run --project infra python scripts/deploy_harness.py
 uv run --project infra python scripts/deploy_app.py --env dev
 ```
 
-`deploy_harness.py` prints `harness_arn=...` and `harness_endpoint=...`. The deployed app does not need them
-(`deploy_app.py` finds the harness itself); copy them into `backend/api/.env` as `HARNESS_ARN` and `HARNESS_ENDPOINT`
-only to run the API locally against that harness (see step 3), or set `harness.arn` in `project.toml` to use an
-existing harness and skip the deploy. Use plain `python` for `setup.py` only: the other scripts need boto3, which
+`deploy_harness.py` writes `HARNESS_ARN` and `HARNESS_ENDPOINT` into `backend/api/.env`, so the local API talks to the
+harness after a restart. The deployed app does not need them (`deploy_app.py` finds the harness itself). To use an
+existing harness and skip the deploy, set `harness.arn` in `project.toml`; the script then writes that ARN instead. Use plain `python` for `setup.py` only: the other scripts need boto3, which
 `uv run --project infra` provides.
 
 ### Network

@@ -12,6 +12,9 @@ from config import AGENTCORE_TARGET, HARNESS_NAME, Config
 
 HARNESS_DIR = Path(__file__).resolve().parent.parent / "harness"
 
+# How another project in the same account recognises this template's harness, so it can reuse it.
+ACCELERATOR_TAGS = {"blendx:template": "accelerator", "blendx:component": "harness"}
+
 
 def render(c: Config) -> dict[str, dict | list]:
     """Relative path under harness/ -> file content."""
@@ -21,7 +24,7 @@ def render(c: Config) -> dict[str, dict | list]:
             "name": c.agentcore_project,
             "version": 1,
             "managedBy": "CDK",
-            "tags": {"agentcore:created-by": "agentcore-cli", "agentcore:project-name": c.name},
+            "tags": {"agentcore:created-by": "agentcore-cli", "agentcore:project-name": c.name, "blendx:project": c.name, **ACCELERATOR_TAGS},
             "runtimes": [],
             "memories": [],
             "knowledgeBases": [],

@@ -23,6 +23,16 @@ def error(code: str, message: str = "boom") -> ClientError:
     return ClientError({"Error": {"Code": code, "Message": message}}, "Op")
 
 
+class NoTags:
+    """The tagging API with no accelerator harnesses in the account."""
+
+    def get_paginator(self, operation):
+        return self
+
+    def paginate(self, **kwargs):
+        yield {"ResourceTagMappingList": []}
+
+
 class FakeSession:
     """Records every client it is asked for and the calls made on it."""
 
@@ -44,7 +54,11 @@ class FakeSession:
                     raise harness_error
                 return {"harness": harness if harness is not None else {"memory": {"managedMemoryConfiguration": {"arn": MEMORY}}}}
 
-        self._clients = {"cloudformation": Cfn(), "bedrock-agentcore-control": Control()}
+        self._clients = {
+            "cloudformation": Cfn(),
+            "bedrock-agentcore-control": Control(),
+            "resourcegroupstaggingapi": NoTags(),
+        }
 
     def client(self, name):
         self.requested.append(name)
@@ -121,3 +135,95 @@ def test_any_other_aws_error_is_named_by_its_code(starter):
     session = FakeSession(outputs=OUTPUTS, harness_error=error("ResourceNotFoundException"))
     with pytest.raises(harness_resolve.HarnessResolveError, match="ResourceNotFoundException"):
         harness_resolve.resolve(starter, session)
+
+
+class AccountSession:
+    """An account with the given harness ARNs carrying the accelerator tags, and no stack of this project.
+
+    `created` gives each live harness's creation time; an ARN missing from it no longer exists (GetHarness says so).
+    """
+
+    def __init__(self, harness_arns=(), own_stack=False, created=None):
+        self.harness_arns = list(harness_arns)
+        self.own_stack = own_stack
+        self.created = created if created is not None else {arn: "2026-11-10T00:00:00+00:00" for arn in harness_arns}
+
+    def client(self, name):
+        session = self
+
+        class Tagging:
+            def get_paginator(self, operation):
+                assert operation == "get_resources"
+                return self
+
+            def paginate(self, TagFilters, ResourceTypeFilters):
+                assert {"Key": "blendx:template", "Values": ["accelerator"]} in TagFilters
+                assert ResourceTypeFilters == ["bedrock-agentcore"]
+                yield {"ResourceTagMappingList": [{"ResourceARN": arn} for arn in session.harness_arns]}
+
+        class Control:
+            def get_harness(self, harnessId):
+                match = [a for a in session.created if a.endswith(f"/{harnessId}")]
+                if not match:
+                    raise error("ResourceNotFoundException", f"Agent with name {harnessId} not found")
+                return {"harness": {"createdAt": session.created[match[0]]}}
+
+        class Cfn:
+            def describe_stacks(self, StackName):
+                if not session.own_stack:
+                    raise error("ValidationError", f"Stack with id {StackName} does not exist")
+                return {"Stacks": [{}]}
+
+        return {"resourcegroupstaggingapi": Tagging(), "bedrock-agentcore-control": Control(), "cloudformation": Cfn()}[name]
+
+
+def test_no_accelerator_harness_means_none():
+    assert harness_resolve.find_accelerator_harness(AccountSession()) is None
+
+
+def test_one_accelerator_harness_is_found():
+    assert harness_resolve.find_accelerator_harness(AccountSession([HARNESS])) == HARNESS
+
+
+def test_several_accelerator_harnesses_reuse_the_newest():
+    older, newer = HARNESS, f"{PREFIX}:harness/assistant-Newer9"
+    session = AccountSession(
+        [older, newer],
+        created={older: "2026-11-09T10:00:00+00:00", newer: "2026-11-10T00:05:40+00:00"},
+    )
+    assert harness_resolve.find_accelerator_harness(session) == newer
+
+
+def test_a_tag_left_behind_by_a_deleted_harness_is_ignored():
+    gone, live = f"{PREFIX}:harness/assistant-Gone1", HARNESS
+    session = AccountSession([gone, live], created={live: "2026-11-10T00:05:40+00:00"})
+    assert harness_resolve.find_accelerator_harness(session) == live
+
+
+def test_endpoints_of_a_harness_are_not_mistaken_for_harnesses():
+    endpoint = f"{HARNESS}/harness-endpoint/DEFAULT"
+    assert harness_resolve.find_accelerator_harness(AccountSession([endpoint, HARNESS])) == HARNESS
+
+
+def test_a_project_without_its_stack_reuses_the_accelerator_harness(tmp_path):
+    from tests.test_config import VALID, write
+
+    c = config.load(write(tmp_path, VALID))
+    assert harness_resolve.starter_harness_arn(c, AccountSession([HARNESS])) == HARNESS
+
+
+def test_a_project_with_its_own_stack_never_reuses_another_harness(tmp_path):
+    from tests.test_config import VALID, write
+
+    c = config.load(write(tmp_path, VALID))
+    session = AccountSession([HARNESS], own_stack=True)  # its stack exists but has no outputs
+    with pytest.raises(harness_resolve.HarnessResolveError, match="no output containing"):
+        harness_resolve.starter_harness_arn(c, session)
+
+
+def test_without_a_stack_or_an_accelerator_harness_the_error_names_the_stack(tmp_path):
+    from tests.test_config import VALID, write
+
+    c = config.load(write(tmp_path, VALID))
+    with pytest.raises(harness_resolve.HarnessResolveError, match="does not exist"):
+        harness_resolve.starter_harness_arn(c, AccountSession())

@@ -54,6 +54,18 @@ def test_write_is_stable(tmp_path):
     assert json.loads((tmp_path / "app/assistant/harness.json").read_text())["name"] == "assistant"
 
 
+def test_wire_local_api_sets_harness_in_env(tmp_path):
+    env = tmp_path / ".env"
+    env.write_text("HARNESS_ARN=\nHARNESS_ENDPOINT=\nLOCAL_AUTH_BYPASS=true\n")
+    assert deploy_harness.wire_local_api("arn:x", "PROD", env)
+    assert env.read_text().splitlines() == ["HARNESS_ARN=arn:x", "HARNESS_ENDPOINT=PROD", "LOCAL_AUTH_BYPASS=true"]
+
+
+def test_wire_local_api_skips_when_no_env(tmp_path):
+    assert not deploy_harness.wire_local_api("arn:x", "PROD", tmp_path / ".env")
+    assert not (tmp_path / ".env").exists()
+
+
 def roles_template(c: config.Config) -> Template:
     stack = RolesStack(cdk.App(), c.roles_stack, specs=role_specs(c),
                        env=cdk.Environment(account=c.aws_account, region=c.aws_region))
@@ -75,6 +87,7 @@ def test_consumer_deploy_role_cannot_repoint_endpoints():
 @pytest.fixture
 def calls(monkeypatch, tmp_path):
     log = []
+    monkeypatch.setattr(deploy_harness, "BACKEND_ENV", tmp_path / "no-such.env")  # never touch the real backend .env
     monkeypatch.setattr(deploy_harness, "run", lambda *cmd, **kw: log.append(cmd) or "")
     monkeypatch.setattr(
         deploy_harness, "platform",
@@ -94,8 +107,19 @@ def test_configured_arn_deploys_nothing(calls, monkeypatch, capsys):
     assert f"harness_endpoint={CONSUMER.harness_endpoint}" in out
 
 
+def test_starter_reuses_an_accelerator_harness_already_in_the_account(calls, monkeypatch, capsys):
+    monkeypatch.setattr(config, "load", lambda *_: STARTER)
+    monkeypatch.setattr(deploy_harness, "stack_exists", lambda *_: False)
+    monkeypatch.setattr(deploy_harness, "find_accelerator_harness", lambda *_: "arn:shared")
+    assert deploy_harness.main() == 0
+    assert calls == []  # nothing deployed, no endpoint touched
+    assert "harness_arn=arn:shared" in capsys.readouterr().out
+
+
 def test_starter_deploys_in_platform_order(calls, monkeypatch, capsys):
     monkeypatch.setattr(config, "load", lambda *_: STARTER)
+    monkeypatch.setattr(deploy_harness, "stack_exists", lambda *_: False)
+    monkeypatch.setattr(deploy_harness, "find_accelerator_harness", lambda *_: None)
     assert deploy_harness.main() == 0
     steps = [c[0] if c[0] != "agentcore" else f"agentcore {c[1]}" for c in calls]
     assert steps == [

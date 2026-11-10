@@ -23,11 +23,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "infra"))
 
+import boto3  # noqa: E402
+
 import config  # noqa: E402
+import envfile  # noqa: E402
 import harness_files  # noqa: E402
 from awsutil import cli, load_config, run  # noqa: E402
+from harness_resolve import find_accelerator_harness, stack_exists  # noqa: E402
 
 PLATFORM_SCRIPTS = ROOT / "scripts" / "harness"
+BACKEND_ENV = ROOT / "backend" / "api" / ".env"
 
 
 def platform(script: str, *args: str) -> str:
@@ -54,11 +59,29 @@ def deploy(c: config.Config) -> str:
     return info["arn"]
 
 
+def wire_local_api(arn: str, endpoint: str, env: Path | None = None) -> bool:
+    """Point the local API's .env at the harness. Returns False when there is no .env (CI, or setup.py not run)."""
+    env = env or BACKEND_ENV  # resolved per call, so the file can be redirected
+    if not env.exists():
+        return False
+    envfile.update(env, {"HARNESS_ARN": arn, "HARNESS_ENDPOINT": endpoint})
+    print(f"Wrote HARNESS_ARN and HARNESS_ENDPOINT to {env}. Restart the API.")
+    return True
+
+
 @cli
 def main() -> int:
     c = load_config()
+    session = boto3.Session(region_name=c.aws_region)
 
-    if c.deploys_starter_harness:
+    shared = None
+    if c.deploys_starter_harness and not stack_exists(session, c.harness_stack):
+        shared = find_accelerator_harness(session)
+
+    if shared:
+        print(f"This account already has the accelerator harness {shared}. Reusing it; nothing is deployed.")
+        arn = shared
+    elif c.deploys_starter_harness:
         arn = deploy(c)
     else:
         print(
@@ -66,6 +89,7 @@ def main() -> int:
             "Nothing is deployed and no deployed harness is touched."
         )
         arn = c.harness_arn
+    wire_local_api(arn, c.harness_endpoint)
     print(f"harness_arn={arn}\nharness_endpoint={c.harness_endpoint}")
     return 0
 

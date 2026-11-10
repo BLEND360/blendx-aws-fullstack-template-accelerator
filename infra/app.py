@@ -16,6 +16,9 @@ from stacks.roles import RolesStack
 
 def build(app: cdk.App, c: config.Config) -> None:
     env = cdk.Environment(account=c.aws_account, region=c.aws_region)
+    # Identity for finding this template's resources in an account, whatever project name they were deployed with.
+    cdk.Tags.of(app).add("blendx:template", "accelerator")
+    cdk.Tags.of(app).add("blendx:project", c.name)
 
     RolesStack(app, c.roles_stack, specs=role_specs(c), env=env)
     AuthStack(app, c.auth_stack, specs=auth_specs(c), env=env)

@@ -1,5 +1,6 @@
 """The sessions API, over HTTP, with every adapter replaced by an in-process stand-in."""
 
+import copy
 import logging
 
 import pytest
@@ -130,6 +131,17 @@ def test_no_response_carries_memory_coordinates_revision_or_owner(client, stack)
 
 
 # --- deleting ------------------------------------------------------------------------
+def test_deleting_someone_elses_session_leaves_their_memory_untouched(client, stack):
+    stack.as_user("bob")
+    theirs = create(client)
+    stack.memory.add(stack.store.get("bob", theirs["id"]).memory, "USER", "hi", "2026-10-08T10:00:00Z")
+    before = copy.deepcopy(stack.memory.events)
+    assert before
+    stack.as_user("alice")
+    assert client.delete(f"/api/v1/sessions/{theirs['id']}").status_code == 404
+    assert stack.memory.events == before
+
+
 def test_delete_empties_the_memory(client, stack):
     session = create(client)
     record = stack.store.get("alice", session["id"])
