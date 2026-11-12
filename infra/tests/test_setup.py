@@ -69,6 +69,20 @@ def test_only_the_missing_env_file_is_written_so_edits_and_the_secret_survive(cl
     assert (clone / "frontend/web/.env").read_text().startswith("#")
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="no os.getuid on Windows")
+def test_writes_the_compose_env_with_the_host_uid_and_keeps_an_existing_one(clone):
+    import os
+
+    run(clone)
+    compose = (clone / ".env").read_text().splitlines()
+    assert f"HOST_UID={os.getuid()}" in compose and f"HOST_GID={os.getgid()}" in compose
+
+    (clone / ".env").write_text("HOST_UID=4242\n")
+    shutil.copy(SETUP, clone / "scripts/setup.py")
+    run(clone)
+    assert (clone / ".env").read_text() == "HOST_UID=4242\n"
+
+
 def test_invalid_project_toml_fails_and_keeps_script(clone):
     toml = clone / "project.toml"
     toml.write_text(re.sub(r'aws_account\s*=\s*"\d+"', 'aws_account = "nope"', toml.read_text()))

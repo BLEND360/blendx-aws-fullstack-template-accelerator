@@ -1,10 +1,14 @@
 # Local run of the whole app: `docker compose up --build`, then http://localhost:5173.
-# Needs backend/api/.env (python scripts/setup.py). ~/.aws is mounted read-only; if `aws login`
-# credentials need it writable, mount it without :ro in a git-ignored docker-compose.override.yml.
+# Needs backend/api/.env (python scripts/setup.py), and the root .env that setup.py writes (HOST_UID/HOST_GID).
 services:
   api:
     # The same image ECS runs.
     build: .
+    # Local only: run as your host user so the container can read and refresh ~/.aws
+    # (`aws login`/SSO caches are 600-mode files you own). The image's own user (uid 10001) cannot.
+    # HOST_UID/HOST_GID come from the root .env that scripts/setup.py writes. Without it (Windows) the
+    # default is the image's own user, which is what Docker Desktop's mounts are readable by.
+    user: "${HOST_UID:-10001}:${HOST_GID:-10001}"
     ports:
       - "8000:8000"
       # The web container shares this container's network (see `web`), so its
@@ -13,9 +17,11 @@ services:
     env_file: backend/api/.env
     environment:
       - AWS_PROFILE  # passed through only when set on the host
+      # /home/app is mode 700 and owned by uid 10001: give the host user a home it can enter.
+      - HOME=/tmp/aws-home
     volumes:
-      # Local AWS credentials, read-only, for /ready and harness calls.
-      - ~/.aws:/home/app/.aws:ro
+      # Local AWS credentials for /ready and harness calls. Writable: `aws login`/SSO refresh their cache.
+      - ~/.aws:/tmp/aws-home/.aws
 
   # Vite dev server. It shares the api container's network so the dev proxy's
   # http://localhost:8000 reaches the API: no API URL to configure anywhere.

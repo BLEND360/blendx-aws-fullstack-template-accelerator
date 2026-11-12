@@ -62,7 +62,9 @@ the API with recorded answers (`HARNESS_REPLAY=true`, see
 
 Without Docker: [backend/api/README.md](backend/api/README.md) and
 [frontend/web/README.md](frontend/web/README.md). `docker compose` mounts
-`~/.aws`, so that folder must exist (`mkdir ~/.aws` if you have no credentials).
+`~/.aws`, so that folder must exist (`mkdir ~/.aws` if you have no credentials). On Linux the API container
+runs as your user (`HOST_UID`/`HOST_GID` in the root `.env`, written by `setup.py`) so it can read the `aws login`
+cache; the deployed ECS task uses its task role instead, so none of this reaches AWS.
 
 ### 2. Deploy to AWS
 
@@ -191,7 +193,7 @@ credentials in `~/.aws`, and restart. `/ready` should then report `ok`.
 | "Your credentials are for account X, but project.toml says Y" | Wrong profile or `aws_account` in `project.toml`. Fix one and retry |
 | An error response carries a `requestId` (also the `X-Request-Id` header) | Search the API logs for it. Deployed: CloudWatch log group `/<project name>/api`, Logs Insights `fields @timestamp, event, exception \| filter request_id = "<id>"`. Local: `docker compose logs api \| grep <id>` |
 | `Your session has expired ... Please reauthenticate using 'aws login'` (API logs, `/ready` degraded with `data_error`) | Run `aws login` (or `aws sso login`), then restart the API |
-| `OSError: [Errno 30] Read-only file system` in the container after `aws login` | `docker compose` mounts `~/.aws` read-only; credentials from `aws login` need it writable. Add a git-ignored `docker-compose.override.yml` that mounts `~/.aws` without `:ro` |
+| `Unable to locate credentials` in the API log (Linux), or `Permission denied` on `/home/app/.aws` | The container cannot read your `~/.aws`. Check that the root `.env` has your `HOST_UID`/`HOST_GID` (`id -u`, `id -g`): run `python scripts/setup.py`, or write it by hand, then `docker compose up -d --force-recreate` |
 | `/ready` is `degraded` with `harness_misconfigured` | `HARNESS_ARN` is empty. Deploy the harness or use `HARNESS_REPLAY=true` |
 | `/ready` is `degraded` with `data_error` on a table | Tables not deployed, or `DATA_STORE=dynamodb` with no credentials. Run `deploy_data.py` |
 | API refuses to start naming `AUTH_JWT_SECRET` or `COGNITO_APP_CLIENT_ID` | Cognito is configured but the secret is shorter than 32 characters, or only one of pool and client is set |
