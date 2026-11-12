@@ -1,6 +1,7 @@
 import dataclasses
 import importlib.util
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -26,14 +27,23 @@ deploy_harness = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(deploy_harness)
 
 
-def test_harness_json_is_model_and_managed_memory_only():
+def test_harness_json_is_model_memory_and_the_app_tools_only():
     harness = harness_files.render(STARTER)["app/assistant/harness.json"]
     assert harness == {
         "name": "assistant",
         "model": {"provider": "bedrock", "modelId": STARTER.harness_model_id},
         "executionRoleArn": STARTER.role_arn(STARTER.harness_execution_role),
         "memory": {"mode": "managed"},
+        "allowedTools": ["current_time"],
     }
+
+
+def test_allowed_tools_are_exactly_the_apps_tools():
+    # The app declares its tools in backend/api/app/tools/builtin.py as Tool(id="..."). Read the ids
+    # without importing the backend, whose dependencies this venv does not have.
+    builtin = (ROOT / "backend" / "api" / "app" / "tools" / "builtin.py").read_text(encoding="utf-8")
+    app_tools = set(re.findall(r'id="([a-zA-Z0-9_-]+)"', builtin))
+    assert set(harness_files.ALLOWED_TOOLS) == app_tools
 
 
 def test_agentcore_names_follow_platform_convention():
