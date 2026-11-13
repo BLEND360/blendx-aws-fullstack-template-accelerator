@@ -1,0 +1,105 @@
+{
+  "_note": "Raw InvokeHarness event stream, one list per invocation, built from the bedrock-agentcore 2024-02-28 service model (botocore 1.43). Re-record from a deployed harness (spec harness-integration, task 7.1). A tool the harness ran itself (gateway): its result arrives in the same stream.",
+  "streams": [
+    [
+      {
+        "messageStart": {
+          "role": "assistant"
+        }
+      },
+      {
+        "contentBlockStart": {
+          "contentBlockIndex": 0,
+          "start": {
+            "toolUse": {
+              "toolUseId": "tooluse_g",
+              "name": "lookup_order",
+              "type": "tool_use"
+            }
+          }
+        }
+      },
+      {
+        "contentBlockDelta": {
+          "contentBlockIndex": 0,
+          "delta": {
+            "toolUse": {
+              "input": "{\"id\": 7}"
+            }
+          }
+        }
+      },
+      {
+        "contentBlockStop": {
+          "contentBlockIndex": 0
+        }
+      },
+      {
+        "contentBlockStart": {
+          "contentBlockIndex": 1,
+          "start": {
+            "toolResult": {
+              "toolUseId": "tooluse_g",
+              "status": "success"
+            }
+          }
+        }
+      },
+      {
+        "contentBlockDelta": {
+          "contentBlockIndex": 1,
+          "delta": {
+            "toolResult": [
+              {
+                "json": {
+                  "state": "shipped"
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "contentBlockStop": {
+          "contentBlockIndex": 1
+        }
+      },
+      {
+        "contentBlockStart": {
+          "contentBlockIndex": 2,
+          "start": {}
+        }
+      },
+      {
+        "contentBlockDelta": {
+          "contentBlockIndex": 2,
+          "delta": {
+            "text": "Order 7 shipped."
+          }
+        }
+      },
+      {
+        "contentBlockStop": {
+          "contentBlockIndex": 2
+        }
+      },
+      {
+        "messageStop": {
+          "stopReason": "end_turn"
+        }
+      },
+      {
+        "metadata": {
+          "usage": {
+            "inputTokens": 12,
+            "outputTokens": 7,
+            "totalTokens": 19
+          },
+          "metrics": {
+            "latencyMs": 640
+          }
+        }
+      }
+    ]
+  ]
+}

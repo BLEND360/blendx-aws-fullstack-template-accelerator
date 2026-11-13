@@ -21,6 +21,7 @@ from botocore.exceptions import (
     ClientError,
     ConnectTimeoutError,
     EndpointConnectionError,
+    HTTPClientError,
     NoCredentialsError,
     ReadTimeoutError,
 )
@@ -65,6 +66,33 @@ class AppError(Exception):
         return error_payload(code=self.code, message=self.message, retryable=self.retryable)
 
 
+class NotFoundError(AppError):
+    """The resource does not exist or is not the caller's: one body for both, so ids cannot be probed."""
+
+    category = "not_found"
+    http_status = 404
+
+    def __init__(self, message: str = "Not found.", **kwargs: Any) -> None:
+        super().__init__(message, **kwargs)
+
+
+class ValidationFailedError(AppError):
+    """The request is well-formed but not acceptable; `fields` says where, like FastAPI's own 422."""
+
+    category = "validation_error"
+    http_status = 422
+
+    def __init__(
+        self, message: str = "The request is not valid.", *, fields: list[dict[str, str]] | None = None, **kwargs: Any
+    ) -> None:
+        super().__init__(message, **kwargs)
+        self.fields = fields or []
+
+    def to_payload(self) -> dict[str, Any]:
+        extra = {"fields": self.fields} if self.fields else {}
+        return error_payload(code=self.code, message=self.message, retryable=self.retryable, **extra)
+
+
 class MisconfiguredError(AppError):
     """The deployment is wrong (an unset ARN, a missing grant's credentials).
 
@@ -88,7 +116,9 @@ class ThrottledError(AppError):
 
 
 class TimeoutError_(AppError):
-    category = "timeout"
+    # Reported as `<dependency>_unavailable`: the code list is closed (R6.2), and a
+    # caller decides on `retryable`, not on whether the cause was a timeout.
+    category = "unavailable"
     http_status = 504
     retryable = True
 
@@ -135,11 +165,15 @@ _CLIENT_ERRORS: dict[str, tuple[type[AppError], str]] = {
     "UnrecognizedClientException": (MisconfiguredError, "The service is not permitted to reach {label}."),
     "ResourceNotFoundException": (MisconfiguredError, "{Label} is not set up for this deployment."),
     "ThrottlingException": (ThrottledError, _BUSY),
+    "ThrottledException": (ThrottledError, _BUSY),  # memory's spelling
     "TooManyRequestsException": (ThrottledError, _BUSY),
     "ProvisionedThroughputExceededException": (ThrottledError, _BUSY),
     "RequestLimitExceeded": (ThrottledError, _BUSY),
     "ServiceQuotaExceededException": (ThrottledError, _BUSY),
     "ValidationException": (InvalidRequestError, "{Label} rejected the request."),
+    "InvalidInputException": (InvalidRequestError, "{Label} rejected the request."),
+    "ServiceException": (UnavailableError, _DOWN),  # memory's internal error
+    "RuntimeClientError": (UnavailableError, _DOWN),  # the harness's container failed (424)
     "ConditionalCheckFailedException": (ConflictError, "This item changed since you loaded it. Reload and try again."),
     "TransactionConflictException": (ConflictError, "This item changed since you loaded it. Reload and try again."),
     "ServiceUnavailableException": (UnavailableError, _DOWN),
@@ -164,10 +198,14 @@ def classify_aws_error(exc: BaseException, *, dependency: str) -> AppError:
 
     if isinstance(exc, ClientError):
         code = str(exc.response.get("Error", {}).get("Code", ""))
+        if code in _STREAM_ERRORS:  # botocore raises an in-stream error event as a ClientError
+            return classify_stream_error(code, detail=f"{code}: {exc}", dependency=dependency)
         cls, sentence = _CLIENT_ERRORS.get(code, (AppError, "{Label} returned an unexpected error."))
         return cls(sentence.format(**fmt), dependency=dependency, detail=f"{code}: {exc}")
     if isinstance(exc, (ConnectTimeoutError, ReadTimeoutError)):
         return TimeoutError_("{Label} took too long to respond.".format(**fmt), dependency=dependency, detail=str(exc))
+    if isinstance(exc, HTTPClientError):  # the response stream broke mid-way (reset, closed)
+        return UnavailableError("{Label} could not be reached.".format(**fmt), dependency=dependency, detail=str(exc))
     if isinstance(exc, (EndpointConnectionError, BotoConnectionError)):
         return UnavailableError("{Label} could not be reached.".format(**fmt), dependency=dependency, detail=str(exc))
     if isinstance(exc, NoCredentialsError):
@@ -176,6 +214,22 @@ def classify_aws_error(exc: BaseException, *, dependency: str) -> AppError:
         )
     detail = str(exc) if isinstance(exc, BotoCoreError) else f"{type(exc).__name__}: {exc}"
     return AppError("{Label} returned an unexpected error.".format(**fmt), dependency=dependency, detail=detail)
+
+
+# Failures that arrive as events inside an already-open response stream, so they are
+# not ClientErrors. Same rule as everywhere: a fixed sentence, the original text only in `detail`.
+_STREAM_ERRORS: dict[str, tuple[type[AppError], str]] = {
+    "internalServerException": (UnavailableError, _DOWN),
+    "runtimeClientError": (UnavailableError, _DOWN),
+    "validationException": (InvalidRequestError, "{Label} rejected the request."),
+}
+
+
+def classify_stream_error(event: str, *, detail: str | None = None, dependency: str = HARNESS) -> AppError:
+    label = _LABELS.get(dependency, dependency)
+    fmt = {"label": label, "Label": label[:1].upper() + label[1:]}
+    cls, sentence = _STREAM_ERRORS.get(event, (AppError, "{Label} returned an unexpected error."))
+    return cls(sentence.format(**fmt), dependency=dependency, detail=detail)
 
 
 def error_payload(*, code: str, message: str, retryable: bool = False, **extra: Any) -> dict[str, Any]:

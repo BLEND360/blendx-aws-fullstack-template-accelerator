@@ -34,6 +34,7 @@ def test_writes_env_files_and_removes_itself(clone):
     assert result.returncode == 0, result.stderr
     backend = (clone / "backend/api/.env").read_text()
     assert f"SESSIONS_TABLE_NAME={config.load().sessions_table}" in backend
+    assert "CORS" not in backend
     assert (clone / "frontend/web/.env").read_text().startswith("#")
     assert (clone / "harness/app/assistant/harness.json").exists()
     assert not (clone / "scripts/setup.py").exists()
