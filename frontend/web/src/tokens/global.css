@@ -1,0 +1,10 @@
+/* Visible keyboard focus on every interactive element, in both modes: the
+ * ring follows antd's primary token, which differs per theme. */
+:focus-visible {
+  outline: 2px solid var(--ant-color-primary);
+  outline-offset: 2px;
+}
+
+body {
+  margin: 0;
+}

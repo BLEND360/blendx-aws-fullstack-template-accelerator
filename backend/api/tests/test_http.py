@@ -1,4 +1,4 @@
-"""Request id, logging, error shape, CORS: the cross-cutting behavior of every route."""
+"""Request id, logging, error shape: the cross-cutting behavior of every route."""
 
 import logging
 
@@ -75,9 +75,12 @@ def test_unsafe_request_id_replaced(client):
     assert client.get("/health", headers={REQUEST_ID_HEADER: forged}).headers[REQUEST_ID_HEADER] != forged
 
 
-def test_request_id_exposed_to_browser_js(client):
-    response = client.get("/health", headers={"Origin": ORIGIN})
-    assert REQUEST_ID_HEADER in response.headers["access-control-expose-headers"]
+def test_no_cors_headers_on_any_response(client):
+    # Same-origin by design: a CORS header would suggest cross-origin calls are supported.
+    for path in ("/health", "/_t/crash", "/nope"):
+        response = client.get(path, headers={"Origin": ORIGIN})
+        assert response.headers[REQUEST_ID_HEADER]
+        assert not [h for h in response.headers if h.lower().startswith("access-control-")]
 
 
 def test_log_lines_from_worker_thread_carry_request_id(client, caplog):
@@ -105,16 +108,14 @@ def test_aws_error_classified_without_leaking(client):
     assert "arn:aws" not in response.text
 
 
-def test_unhandled_error_is_generic_and_keeps_cors_and_request_id(client):
-    response = client.get("/_t/crash", headers={"Origin": ORIGIN, REQUEST_ID_HEADER: "rid-500"})
+def test_unhandled_error_is_generic_and_keeps_request_id(client):
+    response = client.get("/_t/crash", headers={REQUEST_ID_HEADER: "rid-500"})
     assert response.status_code == 500
     assert response.json()["error"] == {
         "code": "internal_error", "message": "The request could not be completed.", "retryable": False,
         "requestId": "rid-500",
     }
     assert "arn:aws" not in response.text
-    # CORS is outermost, so the browser can read this 500 instead of seeing a CORS failure.
-    assert response.headers["access-control-allow-origin"] == ORIGIN
     assert response.headers[REQUEST_ID_HEADER] == "rid-500"
 
 

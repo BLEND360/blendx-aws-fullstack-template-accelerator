@@ -10,11 +10,11 @@ def test_missing_variable_fails_at_startup_with_its_name(monkeypatch):
         config.load_settings()
 
 
-@pytest.mark.parametrize("origins", ["", "*", "http://localhost:5173,*"])
-def test_cors_must_be_exact_origins(monkeypatch, origins):
-    monkeypatch.setenv("CORS_ORIGINS", origins)
-    with pytest.raises(config.SettingsError, match="CORS_ORIGINS"):
-        config.load_settings()
+def test_starts_without_any_allowed_origins(monkeypatch):
+    # The SPA and the API share an origin, so no origin allowlist exists.
+    monkeypatch.delenv("CORS_ORIGINS", raising=False)
+    assert config.load_settings().project_name == "test-project"
+    assert "cors_origins" not in config.Settings.model_fields
 
 
 def test_empty_model_allowlist_rejected(monkeypatch):

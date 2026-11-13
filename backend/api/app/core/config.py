@@ -26,7 +26,6 @@ class Settings(BaseSettings):
     harness_arn: str = ""
     harness_endpoint: str
     allowed_model_ids: list[str]  # JSON list, e.g. ["model-a"]
-    cors_origins: str  # comma-separated exact origins
 
     # Local-only: serve authenticated endpoints as a stand-in user. Ignored in
     # a deployed task (see auth_bypass_enabled), so a stray value in a task
@@ -44,22 +43,6 @@ class Settings(BaseSettings):
         if not [m for m in value if m.strip()]:
             raise ValueError("must list at least one model id")
         return value
-
-    @field_validator("cors_origins")
-    @classmethod
-    def _cors_exact_origins(cls, value: str) -> str:
-        # Browsers reject `*` on credentialed requests, so a wildcard would look
-        # configured while every cross-origin call failed. Fail here instead.
-        origins = [o.strip() for o in value.split(",") if o.strip()]
-        if not origins:
-            raise ValueError("is empty: the SPA would be blocked by the browser")
-        if "*" in origins:
-            raise ValueError("contains '*'; set the exact SPA origin(s)")
-        return value
-
-    @property
-    def cors_origins_list(self) -> list[str]:
-        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
     @property
     def running_on_ecs(self) -> bool:
