@@ -143,3 +143,53 @@ def test_starter_deploys_in_platform_order(calls, monkeypatch, capsys):
     assert calls[3][1:] == (STARTER.harness_stack, STARTER.harness_logical_name)
     assert "--version" in calls[4] and "3" in calls[4]
     assert "harness_arn=arn:h-1" in capsys.readouterr().out
+
+
+def shared(monkeypatch, arn="arn:shared", own_stack=False):
+    monkeypatch.setattr(config, "load", lambda *_: STARTER)
+    monkeypatch.setattr(deploy_harness, "stack_exists", lambda *_: own_stack)
+    monkeypatch.setattr(deploy_harness, "find_accelerator_harness", lambda *_: arn)
+
+
+def test_rerunning_with_the_projects_own_stack_deploys_in_place_and_never_searches(calls, monkeypatch):
+    shared(monkeypatch, own_stack=True)
+    monkeypatch.setattr(deploy_harness, "find_accelerator_harness", lambda *_: pytest.fail("searched with its own stack"))
+    assert deploy_harness.main() == 0
+    assert ("agentcore", "deploy", "-y", "-v") in calls
+
+
+def test_reusing_twice_gives_the_same_harness_and_deploys_nothing(calls, monkeypatch, capsys):
+    shared(monkeypatch)
+    assert deploy_harness.main() == 0
+    assert deploy_harness.main() == 0
+    assert calls == []
+    assert capsys.readouterr().out.count("harness_arn=arn:shared") == 2
+
+
+def test_reusing_writes_the_shared_arn_into_the_local_env(calls, monkeypatch, tmp_path):
+    env = tmp_path / ".env"
+    env.write_text("HARNESS_ARN=\nHARNESS_ENDPOINT=\n")
+    monkeypatch.setattr(deploy_harness, "BACKEND_ENV", env)
+    shared(monkeypatch)
+    assert deploy_harness.main() == 0
+    assert env.read_text().splitlines() == ["HARNESS_ARN=arn:shared", "HARNESS_ENDPOINT=PROD"]
+
+
+def test_a_missing_local_env_is_said_out_loud_not_skipped_silently(calls, monkeypatch, capsys):
+    shared(monkeypatch)  # BACKEND_ENV is redirected to a file that does not exist, by the calls fixture
+    assert deploy_harness.main() == 0
+    assert "scripts/setup.py" in capsys.readouterr().out
+
+
+def test_a_failed_lookup_stops_and_never_deploys_a_second_harness(calls, monkeypatch):
+    from awsutil import DeployError
+
+    monkeypatch.setattr(config, "load", lambda *_: STARTER)
+    monkeypatch.setattr(deploy_harness, "stack_exists", lambda *_: False)
+
+    def denied(*_):
+        raise DeployError("Cannot read the harness (AccessDeniedException).")
+
+    monkeypatch.setattr(deploy_harness, "find_accelerator_harness", denied)
+    assert deploy_harness.main() != 0  # @cli reports the error and exits non-zero
+    assert calls == []

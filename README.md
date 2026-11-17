@@ -115,6 +115,13 @@ harness after a restart. The deployed app does not need them (`deploy_app.py` fi
 existing harness and skip the deploy, set `harness.arn` in `project.toml`; the script then writes that ARN instead. Use plain `python` for `setup.py` only: the other scripts need boto3, which
 `uv run --project infra` provides.
 
+**What is shared and what is per project.** The harness is the only resource shared by every project in an AWS
+account. Before creating one, `deploy_harness.py` looks for a harness tagged `blendx:template=accelerator` and reuses
+the newest one: nothing is created, and the `.env` gets its ARN. Roles, the Cognito pool, the tables and the app are
+named after the project, so a second project in the same account creates its own copies of those. Each step is safe
+to run again. The endpoint `PROD` points at one harness version, so redeploying the harness changes it for every
+project that uses it.
+
 ### Network
 
 By default the template creates its own VPC (`<name>-network`: two zones, private subnets for the API and its load

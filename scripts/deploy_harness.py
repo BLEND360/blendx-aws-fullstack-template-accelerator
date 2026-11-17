@@ -63,6 +63,10 @@ def wire_local_api(arn: str, endpoint: str, env: Path | None = None) -> bool:
     """Point the local API's .env at the harness. Returns False when there is no .env (CI, or setup.py not run)."""
     env = env or BACKEND_ENV  # resolved per call, so the file can be redirected
     if not env.exists():
+        print(
+            f"Not writing HARNESS_ARN to {env}: the file does not exist yet. Run scripts/setup.py first, "
+            "then run this step again."
+        )
         return False
     envfile.update(env, {"HARNESS_ARN": arn, "HARNESS_ENDPOINT": endpoint})
     print(f"Wrote HARNESS_ARN and HARNESS_ENDPOINT to {env}. Restart the API.")
