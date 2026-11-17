@@ -32,11 +32,12 @@ tools listed here can run; anything else the model asks for is refused (`not_ena
 
    The `registry = ToolRegistry(TOOLS)` line at the end of the file must stay below the list.
 
-2. **Allow it on the harness.** Add the id to `ALLOWED_TOOLS` in `infra/harness_files.py`. A test fails if the
-   two lists differ, so a tool cannot be offered by the app and blocked by the harness, or the other way around.
+2. **Allow it on the harness.** Add the id to `ALLOWED_TOOLS` in the infra project's harness definition (`infra/`).
+   A test fails if the two lists differ, so a tool cannot be offered by the app and blocked by the harness, or the
+   other way around.
 
-3. **Redeploy the harness** (`scripts/deploy_harness.py`): the allow list lives in the harness, so a code change
-   alone is not enough.
+3. **Redeploy the harness** with the "Harness" step of the root README: the allow list lives in the harness, so a
+   code change alone is not enough.
 
 ## Rules the code already enforces
 
