@@ -71,16 +71,24 @@ cache; the deployed ECS task uses its task role instead, so none of this reaches
 Needs credentials for the account in `project.toml` (`aws login` or `aws sso login`; check with
 `aws sts get-caller-identity`), plus Docker, Node.js and, for the harness step, the AWS CLI, the `agentcore` CLI
 (`npm i -g @aws/agentcore`), `jq` and `bash` (`deploy_harness.py` runs the platform's own scripts, which call them).
+Before anything else, check that the credentials belong to the account in `project.toml`. The output must equal
+`aws_account`; if it does not, run `aws login` and check again:
+
+```bash
+aws sts get-caller-identity --query Account --output text
+```
+
+Section 1's `setup.py` must have run first: the harness step writes into `backend/api/.env`, which `setup.py` creates.
 From the repo root:
 
 ```bash
 uv run --project infra python scripts/deploy.py --env dev
 ```
 
-That runs, in order, everything below (each step is idempotent, so on an already deployed project it changes
-nothing, and after a failure you run the same command again) and ends by printing the app's public URL:
-account setup, data, sign-in, harness (skipped when `harness.arn` is set) and the app. Then create a user and
-open the URL:
+That runs, in order, everything below and ends by printing the app's public URL: account setup, data, sign-in,
+harness (skipped when `harness.arn` is set) and the app. Each step checks what already exists, so after a failure you
+run the same command again. If it stops with "does not let this user create an internet gateway", follow the
+[Network](#network) section, then run it again. Then create a user and open the URL:
 
 ```bash
 uv run --project infra python scripts/create_user.py you@example.com
@@ -102,7 +110,7 @@ uv run --project infra python scripts/deploy_data.py
 uv run --project infra python scripts/deploy_auth.py
 
 # starter harness (model + managed memory); skipped when harness.arn is set.
-# Needs: npm i -g @aws/agentcore, AWS CLI, jq, bash
+# Needs: npm i -g @aws/agentcore, AWS CLI, jq, bash. Run it without flags.
 uv run --project infra python scripts/deploy_harness.py
 
 # the app: network (unless [network] points at an existing VPC), API service, SPA, CloudFront.
@@ -110,10 +118,22 @@ uv run --project infra python scripts/deploy_harness.py
 uv run --project infra python scripts/deploy_app.py --env dev
 ```
 
-`deploy_harness.py` writes `HARNESS_ARN` and `HARNESS_ENDPOINT` into `backend/api/.env`, so the local API talks to the
-harness after a restart. The deployed app does not need them (`deploy_app.py` finds the harness itself). To use an
-existing harness and skip the deploy, set `harness.arn` in `project.toml`; the script then writes that ARN instead. Use plain `python` for `setup.py` only: the other scripts need boto3, which
-`uv run --project infra` provides.
+**Checking the harness step.** `deploy_harness.py` writes `HARNESS_ARN` and `HARNESS_ENDPOINT` into
+`backend/api/.env`, so the local API talks to the harness after a restart. The deployed app does not need them
+(`deploy_app.py` finds the harness itself). To confirm it worked:
+
+```bash
+grep HARNESS backend/api/.env    # HARNESS_ARN must have an arn:aws:bedrock-agentcore:... value
+```
+
+If `HARNESS_ARN` is empty, the script printed a warning: run `scripts/setup.py` first, then `deploy_harness.py` again.
+
+- **Running it again** on a project that already has its harness changes nothing and says so.
+- **`--update`** applies this checkout's harness settings (tools, model). It shows the changes and asks for
+  confirmation. Other projects that reuse the harness get the change too, so only run it on the project that owns it.
+- To use an existing harness instead, set `harness.arn` in `project.toml`; the script then writes that ARN and deploys nothing.
+
+Use plain `python` for `setup.py` only: the other scripts need boto3, which `uv run --project infra` provides.
 
 **What is shared and what is per project.** The harness is the only resource shared by every project in an AWS
 account. Before creating one, `deploy_harness.py` looks for a harness tagged `blendx:template=accelerator` and reuses
