@@ -1,0 +1,21 @@
+[project]
+name = "infra"
+version = "0.1.0"
+description = "CDK app: every stack in the template"
+requires-python = ">=3.12"
+dependencies = [
+    "aws-cdk-lib>=2.271",
+    "constructs>=10.3",
+    # The deploy scripts: account check, stack outputs, network and Cognito calls.
+    # [crt]: needed by botocore's login/SSO credential provider.
+    "boto3[crt]>=1.40",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.3"]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

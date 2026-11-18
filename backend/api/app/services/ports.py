@@ -1,0 +1,121 @@
+"""Ports: what services need from the outside, as types.
+
+Declared here, in the layer that owns the need, and implemented in clients/,
+repositories/ and harness/. Services compose these, never concrete adapters,
+so every service is testable with a stand-in and no AWS.
+"""
+
+from collections.abc import AsyncIterator, Iterator, Sequence
+from typing import Protocol
+
+from app.core.models import (
+    HarnessEvent,
+    HarnessRequest,
+    Identity,
+    ItemRecord,
+    MemoryEvent,
+    MemoryRef,
+    SessionClaims,
+    SessionRecord,
+    ToolOutcome,
+    ToolSpec,
+)
+
+
+class IdentityVerifier(Protocol):
+    """Verifies the identity provider's token. Raises InvalidTokenError, or UnavailableError if it cannot be checked."""
+
+    def verify(self, id_token: str) -> Identity: ...
+
+
+class SessionTokens(Protocol):
+    """Issues and reads the app's session credential. `decode` raises InvalidTokenError."""
+
+    def issue(self, claims: SessionClaims) -> str: ...
+
+    def decode(self, token: str) -> SessionClaims: ...
+
+
+class DependencyProbe(Protocol):
+    """One reachability check for /ready. Raises AppError when unreachable."""
+
+    name: str
+
+    def check(self) -> None: ...
+
+
+class HarnessPort(Protocol):
+    """Runs one invocation of the configured harness and yields what it produced.
+
+    Raises AppError from the iterator for any failure, including those that arrive
+    inside the stream. Cancelling the consumer cancels the invocation.
+    """
+
+    def invoke(self, request: HarnessRequest) -> AsyncIterator[HarnessEvent]: ...
+
+
+class MemoryPort(Protocol):
+    """The harness's memory: the only place a conversation's content lives."""
+
+    def list_events(self, memory: MemoryRef) -> Iterator[MemoryEvent]:
+        """Every event of the session, across all pages."""
+        ...
+
+    def purge(self, memory: MemoryRef) -> None:
+        """Delete every event of the session. Safe to call again after a partial failure."""
+        ...
+
+
+class SessionStore(Protocol):
+    """Session metadata, owned by the caller: (owner_id, session_id) is the key.
+
+    Implemented by repositories/dynamo.py (deployed) and in_memory_sessions.py (local). Errors
+    surface as AppError (`data_unavailable`, `data_throttled`, `data_conflict`).
+    """
+
+    def create(self, record: SessionRecord) -> None: ...
+
+    def get(self, owner_id: str, session_id: str, *, include_deleting: bool = False) -> SessionRecord | None: ...
+
+    def list(self, owner_id: str) -> list[SessionRecord]:
+        """Only status "active"."""
+        ...
+
+    def update(self, record: SessionRecord, expected_revision: int) -> SessionRecord:
+        """Atomic: ConflictError when the stored revision differs. Returns the record with revision + 1."""
+        ...
+
+    def delete(self, owner_id: str, session_id: str) -> None: ...
+
+
+class ItemStore(Protocol):
+    """The example entity, owned by the caller like a session: (owner_id, item_id) is the key,
+    so another user's item is simply absent."""
+
+    def create(self, record: ItemRecord) -> None: ...
+
+    def get(self, owner_id: str, item_id: str) -> ItemRecord | None: ...
+
+    def list(self, owner_id: str) -> list[ItemRecord]:
+        """Newest first."""
+        ...
+
+    def update(self, record: ItemRecord, expected_revision: int) -> ItemRecord:
+        """Atomic: ConflictError when the stored revision differs, NotFoundError when absent. Returns revision + 1."""
+        ...
+
+    def delete(self, owner_id: str, item_id: str) -> None: ...
+
+
+class ToolPort(Protocol):
+    """Local tools the agent may call. Ids are what the client sends; everything executable is resolved here."""
+
+    def ids(self) -> frozenset[str]: ...
+
+    def label(self, tool_id: str) -> str | None: ...
+
+    def specs_for(self, tool_ids: Sequence[str]) -> tuple[ToolSpec, ...]: ...
+
+    def run(self, tool_id: str, raw_input: dict[str, object] | None) -> ToolOutcome:
+        """Never raises: a failure is a ToolOutcome with status "error"."""
+        ...

@@ -1,0 +1,409 @@
+/* Shared look of the app: the design tokens pages use, and the shell, page header, card and empty
+ * state they share. No brand value lives here (src/tokens/ owns those): every color comes from antd's
+ * CSS variables, so this follows the light/dark theme and any replacement theme.
+ *
+ * Scale: spacing 4 · 8 · 12 · 16 · 24 · 32 · 48. Radii: controls 10–12, cards 14–18. Motion 120–200ms. */
+
+.app-shell {
+  --color-primary: var(--ant-color-primary);
+  --color-primary-hover: var(--ant-color-primary-hover);
+  --color-primary-soft: color-mix(in srgb, var(--ant-color-primary) 8%, var(--ant-color-bg-container));
+  --color-bg: var(--ant-color-bg-layout);
+  --color-surface: var(--ant-color-bg-container);
+  --color-border: var(--ant-color-border-secondary);
+  --color-text-primary: var(--ant-color-text-heading);
+  --color-text-secondary: var(--ant-color-text-secondary);
+
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+  --shadow-sm: 0 1px 2px color-mix(in srgb, var(--ant-color-text) 6%, transparent);
+  --shadow-md: 0 1px 2px color-mix(in srgb, var(--ant-color-text) 5%, transparent),
+    0 8px 24px color-mix(in srgb, var(--ant-color-text) 7%, transparent);
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  --ease: 160ms ease;
+  --header-height: 64px;
+
+  min-height: 100dvh;
+  background: var(--color-bg);
+}
+
+/* ── development banner ─────────────────────────────── */
+.dev-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 28px;
+  padding: 3px var(--space-4);
+  border-bottom: 1px solid color-mix(in srgb, var(--ant-color-warning) 28%, transparent);
+  background: color-mix(in srgb, var(--ant-color-warning) 10%, var(--color-surface));
+  color: var(--ant-color-text);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+
+.dev-banner .anticon {
+  color: var(--ant-color-warning);
+}
+
+/* ── header ─────────────────────────────────────────── */
+.app-header.ant-layout-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  height: var(--header-height);
+  line-height: normal;
+  padding-inline: var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-surface) 92%, transparent);
+  backdrop-filter: saturate(1.4) blur(10px);
+}
+
+.app-header-inner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  height: 100%;
+  max-width: 1240px;
+  margin-inline: auto;
+}
+
+.app-nav.ant-menu {
+  flex: 1;
+  min-width: 0;
+  border-bottom: 0;
+  background: transparent;
+  line-height: calc(var(--header-height) - 1px);
+}
+
+.app-nav.ant-menu-horizontal > .ant-menu-item {
+  margin-inline: 2px;
+  padding-inline: var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 500;
+  transition: background var(--ease), color var(--ease);
+}
+
+/* the small underline antd draws: the soft background already says which tab is active */
+.app-nav.ant-menu-horizontal > .ant-menu-item::after,
+.app-nav.ant-menu-horizontal > .ant-menu-submenu::after {
+  display: none;
+}
+
+.app-nav.ant-menu-horizontal > .ant-menu-item-selected {
+  font-weight: 600;
+}
+
+.app-nav .ant-menu-item a:hover {
+  color: inherit;
+}
+
+.app-user {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.app-user-name {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 14px;
+  color: var(--ant-color-text);
+}
+
+.app-user-avatar {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* ── page frame ─────────────────────────────────────── */
+.app-content.ant-layout-content {
+  padding: var(--space-6) var(--space-5) var(--space-7);
+}
+
+.page {
+  max-width: 1040px;
+  margin-inline: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  animation: page-in 200ms ease both;
+}
+
+.page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.page-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: var(--space-1);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ant-color-text-secondary);
+}
+
+.page-kicker::before {
+  content: "";
+  width: 22px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--color-primary);
+}
+
+.page-title.ant-typography {
+  margin: 0;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.page-sub {
+  margin: var(--space-1) 0 0;
+  max-width: 62ch;
+  color: var(--color-text-secondary);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.section-title {
+  margin: 0 0 var(--space-3);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+/* ── controls ───────────────────────────────────────── */
+.app-shell .ant-btn,
+.app-shell .ant-input,
+.app-shell .ant-input-affix-wrapper {
+  border-radius: var(--radius-sm);
+}
+
+.app-shell .ant-btn {
+  transition: background var(--ease), border-color var(--ease), color var(--ease), box-shadow var(--ease),
+    transform var(--ease);
+}
+
+.app-shell .ant-btn-primary:not(:disabled):hover {
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--color-primary) 28%, transparent);
+}
+
+/* dialogs render in a portal, outside .app-shell */
+.ant-modal .ant-modal-container {
+  border-radius: 18px;
+}
+
+/* ── cards ──────────────────────────────────────────── */
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+  transition: border-color var(--ease), box-shadow var(--ease), transform var(--ease);
+}
+
+a.card,
+button.card {
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+a.card:hover,
+button.card:hover,
+.card--interactive:hover {
+  border-color: color-mix(in srgb, var(--color-primary) 40%, var(--color-border));
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.card-icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  font-size: 17px;
+}
+
+.card-title {
+  margin: var(--space-2) 0 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.card-text {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-4);
+}
+
+/* ── empty state ────────────────────────────────────── */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-6) var(--space-5);
+  border: 1px dashed color-mix(in srgb, var(--color-primary) 22%, var(--color-border));
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--color-surface) 70%, transparent);
+  text-align: center;
+}
+
+.empty-icon {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  margin-bottom: var(--space-2);
+  border-radius: 50%;
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  font-size: 22px;
+}
+
+.empty h3 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.empty p {
+  margin: 0 0 var(--space-3);
+  max-width: 42ch;
+  color: var(--color-text-secondary);
+}
+
+.card-more {
+  margin-top: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.model-list {
+  list-style: none;
+  margin: 0;
+  gap: 0;
+}
+
+.model-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+}
+
+.login-page {
+  padding: 48px;
+}
+
+.login-card {
+  width: 360px;
+}
+
+.login-title {
+  margin: 0;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.status-pill::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ant-color-success);
+}
+
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .app-header.ant-layout-header {
+    padding-inline: var(--space-3);
+  }
+
+  .app-header-inner {
+    gap: var(--space-2);
+  }
+
+  .app-user-name span:last-child {
+    display: none;
+  }
+
+  .app-content.ant-layout-content {
+    padding: var(--space-4) var(--space-3) var(--space-6);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell *,
+  .app-shell *::before,
+  .app-shell *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

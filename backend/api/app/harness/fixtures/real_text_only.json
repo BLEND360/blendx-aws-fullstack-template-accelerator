@@ -1,0 +1,58 @@
+{
+  "_note": "Recorded from a deployed starter harness (AgentCore, us-east-1, 2026-10-09); events are the raw stream as the service sends it. A plain text turn.",
+  "streams": [
+    [
+      {
+        "messageStart": {
+          "role": "assistant"
+        }
+      },
+      {
+        "contentBlockDelta": {
+          "contentBlockIndex": 0,
+          "delta": {
+            "text": "Hello there"
+          }
+        }
+      },
+      {
+        "contentBlockDelta": {
+          "contentBlockIndex": 0,
+          "delta": {
+            "text": ","
+          }
+        }
+      },
+      {
+        "contentBlockDelta": {
+          "contentBlockIndex": 0,
+          "delta": {
+            "text": " how are you?"
+          }
+        }
+      },
+      {
+        "contentBlockStop": {
+          "contentBlockIndex": 0
+        }
+      },
+      {
+        "messageStop": {
+          "stopReason": "end_turn"
+        }
+      },
+      {
+        "metadata": {
+          "metrics": {
+            "latencyMs": 1453
+          },
+          "usage": {
+            "inputTokens": 926,
+            "outputTokens": 10,
+            "totalTokens": 936
+          }
+        }
+      }
+    ]
+  ]
+}
