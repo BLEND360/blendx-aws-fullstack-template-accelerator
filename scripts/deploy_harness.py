@@ -16,6 +16,7 @@ Needs the agentcore CLI (`npm i -g @aws/agentcore`), the AWS CLI, jq, and bash:
 the endpoint steps run the platform's own scripts from scripts/harness/.
 """
 
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -29,7 +30,7 @@ import config  # noqa: E402
 import envfile  # noqa: E402
 import harness_files  # noqa: E402
 from awsutil import cli, load_config, run  # noqa: E402
-from harness_resolve import find_accelerator_harness, stack_exists  # noqa: E402
+from harness_resolve import deployed_settings, find_accelerator_harness, stack_harness  # noqa: E402
 
 PLATFORM_SCRIPTS = ROOT / "scripts" / "harness"
 BACKEND_ENV = ROOT / "backend" / "api" / ".env"
@@ -73,16 +74,49 @@ def wire_local_api(arn: str, endpoint: str, env: Path | None = None) -> bool:
     return True
 
 
+def drift(session, c: config.Config, harness_id: str) -> list[str]:
+    """The settings that differ between the live harness and this checkout, as readable lines."""
+    rendered = harness_files.render(c)["app/assistant/harness.json"]
+    want = {"allowedTools": sorted(rendered["allowedTools"]), "modelId": rendered["model"]["modelId"]}
+    live = deployed_settings(session, harness_id)
+    return [f"{key}: {live[key]!r} -> {want[key]!r}" for key in want if live[key] != want[key]]
+
+
+def confirm(question: str) -> bool:
+    return sys.stdin.isatty() and input(f"{question} [y/N] ").strip().lower() == "y"
+
+
 @cli
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Deploy or reuse the starter harness, and wire the local API to it.")
+    parser.add_argument(
+        "--update", action="store_true",
+        help="apply this checkout's harness settings to this project's own harness. Other projects that reuse it "
+             "start using the new version too, so the changes are shown and must be confirmed.",
+    )
+    args = parser.parse_args(argv)
+
     c = load_config()
     session = boto3.Session(region_name=c.aws_region)
+    own = stack_harness(c, session) if c.deploys_starter_harness else None
 
-    shared = None
-    if c.deploys_starter_harness and not stack_exists(session, c.harness_stack):
-        shared = find_accelerator_harness(session)
-
-    if shared:
+    if own and not args.update:
+        print(f"This project's harness {own['arn']} is already deployed (version {own['version']}). Nothing changed. "
+              "Run with --update to apply this checkout's settings.")
+        arn = own["arn"]
+    elif own:
+        changes = drift(session, c, own["id"])
+        if not changes:
+            print(f"The harness {own['arn']} already matches this checkout. Nothing to apply.")
+            arn = own["arn"]
+        else:
+            print(f"Applying these changes to {own['arn']}, which other projects may reuse:")
+            print("\n".join(f"  {line}" for line in changes))
+            if not confirm("Apply them?"):
+                print("Not applied. Nothing was changed.")
+                return 1
+            arn = deploy(c)
+    elif c.deploys_starter_harness and (shared := find_accelerator_harness(session)):
         print(f"This account already has the accelerator harness {shared}. Reusing it; nothing is deployed.")
         arn = shared
     elif c.deploys_starter_harness:

@@ -70,6 +70,31 @@ def find_accelerator_harness(session) -> str | None:
     return max(live)[1] if live else None
 
 
+def stack_harness(c: config.Config, session) -> dict | None:
+    """The harness this project's own stack deployed ({id, arn, version}), or None when the stack does not exist."""
+    if not stack_exists(session, c.harness_stack):
+        return None
+    stack = session.client("cloudformation").describe_stacks(StackName=c.harness_stack)["Stacks"][0]
+    outputs = {o["OutputKey"]: o["OutputValue"] for o in stack.get("Outputs", [])}
+
+    def get(field: str) -> str:
+        needle = f"Harness{c.harness_logical_name}{field}Output"
+        matches = [v for k, v in outputs.items() if needle in k]
+        if not matches:
+            raise HarnessResolveError(f"The stack {c.harness_stack} has no output containing {needle!r}.")
+        return matches[0]
+
+    return {"id": get("Id"), "arn": get("Arn"), "version": get("Version")}
+
+
+def deployed_settings(session, harness_id: str) -> dict:
+    """The settings the live harness runs with, as the fields the template renders them (GetHarness)."""
+    harness = session.client("bedrock-agentcore-control").get_harness(harnessId=harness_id)["harness"]
+    # GetHarness nests the model id as model.bedrockModelConfig.modelId (checked against the live harness).
+    model = (harness.get("model") or {}).get("bedrockModelConfig") or {}
+    return {"allowedTools": sorted(harness.get("allowedTools") or []), "modelId": model.get("modelId")}
+
+
 def starter_harness_arn(c: config.Config, session) -> str:
     """This project's starter harness, or the accelerator harness another project already deployed here."""
     try:

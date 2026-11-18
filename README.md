@@ -118,9 +118,10 @@ existing harness and skip the deploy, set `harness.arn` in `project.toml`; the s
 **What is shared and what is per project.** The harness is the only resource shared by every project in an AWS
 account. Before creating one, `deploy_harness.py` looks for a harness tagged `blendx:template=accelerator` and reuses
 the newest one: nothing is created, and the `.env` gets its ARN. Roles, the Cognito pool, the tables and the app are
-named after the project, so a second project in the same account creates its own copies of those. Each step is safe
-to run again. The endpoint `PROD` points at one harness version, so redeploying the harness changes it for every
-project that uses it.
+named after the project, so a second project in the same account creates its own copies of those. Running
+`deploy_harness.py` again on a project that already has its harness changes nothing. To apply this checkout's harness
+settings (tools, model), run `deploy_harness.py --update`: it shows what would change and asks for confirmation. The
+endpoint `PROD` points at one harness version, so an update changes it for every project that reuses that harness.
 
 ### Network
 

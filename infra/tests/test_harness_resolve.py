@@ -227,3 +227,21 @@ def test_without_a_stack_or_an_accelerator_harness_the_error_names_the_stack(tmp
     c = config.load(write(tmp_path, VALID))
     with pytest.raises(harness_resolve.HarnessResolveError, match="does not exist"):
         harness_resolve.starter_harness_arn(c, AccountSession())
+
+
+class _SettingsControl:
+    """GetHarness with the shape the live API returns (model id nested under bedrockModelConfig)."""
+
+    def get_harness(self, harnessId):
+        return {"harness": {"allowedTools": ["current_time"], "model": {"bedrockModelConfig": {"modelId": "model-x", "apiFormat": "converse_stream"}}}}
+
+
+class _SettingsSession:
+    def client(self, name):
+        assert name == "bedrock-agentcore-control"
+        return _SettingsControl()
+
+
+def test_deployed_settings_read_the_model_where_the_live_api_nests_it():
+    got = harness_resolve.deployed_settings(_SettingsSession(), "assistant-AbC123")
+    assert got == {"allowedTools": ["current_time"], "modelId": "model-x"}
