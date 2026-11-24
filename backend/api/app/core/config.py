@@ -1,0 +1,124 @@
+"""Typed settings, validated at import.
+
+A missing or invalid variable stops the process at startup with the variable
+named, instead of surfacing as a 500 on the first request that needs it.
+Locally the values come from .env, written by scripts/setup.py from
+project.toml; deployed, the app stack sets them on the ECS task.
+"""
+
+import os
+from typing import Literal
+
+from pydantic import Field, ValidationError, ValidationInfo, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class SettingsError(RuntimeError):
+    pass
+
+
+class Settings(BaseSettings):
+    project_name: str
+    aws_region: str
+    sessions_table_name: str
+    items_table_name: str
+    # Empty until the starter harness is deployed: /ready reports it as
+    # misconfigured rather than the app refusing to start.
+    harness_arn: str = ""
+    harness_endpoint: str
+    allowed_model_ids: list[str]  # JSON list, e.g. ["model-a"]
+
+    # Where sessions and items live. "auto": DynamoDB in a deployed task, process memory locally,
+    # so a laptop needs no tables. "dynamodb" locally uses the tables named above, with your credentials.
+    data_store: Literal["auto", "memory", "dynamodb"] = "auto"
+
+    # Turn streaming. The idle limit is the longest the harness may stay silent
+    # (botocore's read timeout): a slow turn keeps producing events, a hung one
+    # does not. The turn limit bounds the agent loop's total duration.
+    harness_idle_timeout_seconds: int = 300
+    harness_turn_timeout_seconds: int = 900
+    max_tool_rounds: int = 8  # local-tool round trips per turn before giving up
+
+    # Demonstration mode: answer turns by playing recorded streams instead of calling the harness.
+    # Local only (see replay_enabled). The pause makes the recorded streaming visible.
+    harness_replay: bool = False
+    harness_replay_delay_seconds: float = 0.04
+
+    # Local-only: serve authenticated endpoints as a stand-in user. Ignored in
+    # a deployed task (see auth_bypass_enabled), so a stray value in a task
+    # definition cannot open production.
+    local_auth_bypass: bool = False
+    local_auth_user_id: str = "local-dev-user"
+    local_auth_user_email: str = "local-dev@example.com"
+    local_auth_user_name: str = "Local Dev"
+
+    # Sign-in. Empty until the auth stack is deployed (scripts/deploy_auth.py prints the values);
+    # with both empty, only the local bypass admits anyone. The secret signs the app's own session
+    # credential and is required, at 32+ characters, as soon as Cognito is configured.
+    cognito_user_pool_id: str = ""
+    cognito_app_client_id: str = ""
+    auth_jwt_secret: str = Field(default="", validate_default=True)
+    auth_token_ttl_seconds: int = 3600
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    @field_validator("cognito_app_client_id")
+    @classmethod
+    def _pool_and_client_together(cls, value: str, info: ValidationInfo) -> str:
+        if bool(value) != bool(info.data.get("cognito_user_pool_id")):
+            raise ValueError("must be set together with COGNITO_USER_POOL_ID")
+        return value
+
+    @field_validator("auth_jwt_secret")
+    @classmethod
+    def _secret_strong_when_cognito_is_on(cls, value: str, info: ValidationInfo) -> str:
+        if info.data.get("cognito_user_pool_id") and info.data.get("cognito_app_client_id") and len(value) < 32:
+            raise ValueError("must be at least 32 characters when Cognito is configured")
+        return value
+
+    @field_validator("allowed_model_ids")
+    @classmethod
+    def _models_not_empty(cls, value: list[str]) -> list[str]:
+        if not [m for m in value if m.strip()]:
+            raise ValueError("must list at least one model id")
+        return value
+
+    @property
+    def cognito_configured(self) -> bool:
+        return bool(self.cognito_user_pool_id and self.cognito_app_client_id)
+
+    @property
+    def running_on_ecs(self) -> bool:
+        """The ECS agent injects the metadata endpoint into every task; config cannot fake it away."""
+        return bool(
+            os.getenv("ECS_CONTAINER_METADATA_URI_V4")
+            or os.getenv("ECS_CONTAINER_METADATA_URI")
+            or os.getenv("AWS_EXECUTION_ENV")
+        )
+
+    @property
+    def use_dynamodb(self) -> bool:
+        return self.data_store == "dynamodb" or (self.data_store == "auto" and self.running_on_ecs)
+
+    @property
+    def auth_bypass_enabled(self) -> bool:
+        return self.local_auth_bypass and not self.running_on_ecs
+
+    @property
+    def replay_enabled(self) -> bool:
+        """Like the auth bypass, ignored in a deployed task: a stray value in a task
+        definition must not make production answer with recordings."""
+        return self.harness_replay and not self.running_on_ecs
+
+
+def load_settings() -> Settings:
+    try:
+        return Settings()  # type: ignore[call-arg]
+    except ValidationError as exc:
+        problems = "; ".join(
+            f"{str(err['loc'][0]).upper()}: {err['msg']}" for err in exc.errors()
+        )
+        raise SettingsError(f"Invalid configuration: {problems}") from None
+
+
+settings = load_settings()

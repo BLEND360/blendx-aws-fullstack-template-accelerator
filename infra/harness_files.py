@@ -1,0 +1,69 @@
+"""Renders the starter harness's agentcore config from project.toml.
+
+The agentcore CLI reads three JSON files under harness/. They are derived, like
+the .env files, so they are gitignored and rendered by setup.py and again by
+the deploy step: project.toml stays the only place their values live.
+"""
+
+import json
+from pathlib import Path
+
+from config import AGENTCORE_TARGET, HARNESS_NAME, Config
+
+HARNESS_DIR = Path(__file__).resolve().parent.parent / "harness"
+
+# How another project in the same account recognises this template's harness, so it can reuse it.
+ACCELERATOR_TAGS = {"blendx:template": "accelerator", "blendx:component": "harness"}
+
+# The only tools the agent may use: the ones the app implements (backend/api/app/tools). Anything else the model
+# asks for, such as the harness's built-in shell, is refused. Must equal the app's TOOLS ids (a test checks it).
+ALLOWED_TOOLS = ("current_time",)
+
+
+def render(c: Config) -> dict[str, dict | list]:
+    """Relative path under harness/ -> file content."""
+    return {
+        "agentcore/agentcore.json": {
+            "$schema": "https://schema.agentcore.aws.dev/v1/agentcore.json",
+            "name": c.agentcore_project,
+            "version": 1,
+            "managedBy": "CDK",
+            "tags": {"agentcore:created-by": "agentcore-cli", "agentcore:project-name": c.name, "blendx:project": c.name, **ACCELERATOR_TAGS},
+            "runtimes": [],
+            "memories": [],
+            "knowledgeBases": [],
+            "credentials": [],
+            "evaluators": [],
+            "onlineEvalConfigs": [],
+            "agentCoreGateways": [],
+            "policyEngines": [],
+            "configBundles": [],
+            "abTests": [],
+            "harnesses": [{"name": HARNESS_NAME, "path": f"app/{HARNESS_NAME}"}],
+            "datasets": [],
+            "payments": [],
+        },
+        "agentcore/aws-targets.json": [
+            {
+                "name": AGENTCORE_TARGET,
+                "description": f"{c.name} ({c.aws_region})",
+                "account": c.aws_account,
+                "region": c.aws_region,
+            }
+        ],
+        # A model, managed memory and the app's tools, nothing else: no skills or gateways.
+        f"app/{HARNESS_NAME}/harness.json": {
+            "name": HARNESS_NAME,
+            "model": {"provider": "bedrock", "modelId": c.harness_model_id},
+            "executionRoleArn": c.role_arn(c.harness_execution_role),
+            "memory": {"mode": "managed"},
+            "allowedTools": list(ALLOWED_TOOLS),
+        },
+    }
+
+
+def write(c: Config, root: Path = HARNESS_DIR) -> None:
+    for rel, content in render(c).items():
+        path = root / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(content, indent=2) + "\n", encoding="utf-8")

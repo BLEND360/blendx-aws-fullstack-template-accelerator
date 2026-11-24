@@ -1,0 +1,39 @@
+{
+  "_note": "Raw InvokeHarness event stream, one list per invocation, built from the bedrock-agentcore 2024-02-28 service model (botocore 1.43). Synthetic: built from the service model; the starter harness cannot produce it. Text, then the harness fails inside the open stream (botocore raises it as an EventStreamError).",
+  "streams": [
+    [
+      {
+        "messageStart": {
+          "role": "assistant"
+        }
+      },
+      {
+        "contentBlockStart": {
+          "contentBlockIndex": 0,
+          "start": {}
+        }
+      },
+      {
+        "contentBlockDelta": {
+          "contentBlockIndex": 0,
+          "delta": {
+            "text": "Working on it"
+          }
+        }
+      },
+      {
+        "contentBlockDelta": {
+          "contentBlockIndex": 0,
+          "delta": {
+            "text": " and "
+          }
+        }
+      },
+      {
+        "internalServerException": {
+          "message": "arn:aws:bedrock-agentcore:us-east-1:123456789012:harness/h-1234567890 exploded"
+        }
+      }
+    ]
+  ]
+}

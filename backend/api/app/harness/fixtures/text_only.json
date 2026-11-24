@@ -1,0 +1,64 @@
+{
+  "_note": "Raw InvokeHarness event stream, one list per invocation, built from the bedrock-agentcore 2024-02-28 service model (botocore 1.43). Synthetic: built from the service model; the starter harness cannot produce it. A text-only turn.",
+  "streams": [
+    [
+      {
+        "messageStart": {
+          "role": "assistant"
+        }
+      },
+      {
+        "contentBlockStart": {
+          "contentBlockIndex": 0,
+          "start": {}
+        }
+      },
+      {
+        "contentBlockDelta": {
+          "contentBlockIndex": 0,
+          "delta": {
+            "text": "Hel"
+          }
+        }
+      },
+      {
+        "contentBlockDelta": {
+          "contentBlockIndex": 0,
+          "delta": {
+            "text": "lo, "
+          }
+        }
+      },
+      {
+        "contentBlockDelta": {
+          "contentBlockIndex": 0,
+          "delta": {
+            "text": "world."
+          }
+        }
+      },
+      {
+        "contentBlockStop": {
+          "contentBlockIndex": 0
+        }
+      },
+      {
+        "messageStop": {
+          "stopReason": "end_turn"
+        }
+      },
+      {
+        "metadata": {
+          "usage": {
+            "inputTokens": 12,
+            "outputTokens": 7,
+            "totalTokens": 19
+          },
+          "metrics": {
+            "latencyMs": 640
+          }
+        }
+      }
+    ]
+  ]
+}
