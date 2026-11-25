@@ -21,7 +21,6 @@ harness/agentcore/.cache/
 # cc-sdd files
 .kiro/
 CLAUDE.md
-AGENTS.md
 .agents/skills/kiro-*
 *.tsbuildinfo
 .vite/

@@ -1,0 +1,146 @@
+name: Sync Documentation to blendx-living-docs
+
+# Keeps BLEND360/blendx-living-docs current with docs/ from this repo.
+#
+# A push to main touching docs/** triggers THIS workflow, which re-runs
+# blendx-living-docs' migration script against the current docs/ and
+# opens/updates a PR there for review. Destination: aws/fullstack-app-template.
+#
+# This workflow does not publish anything itself — merging the PR it opens
+# in blendx-living-docs is what triggers that repo's own deploy.yml.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "docs/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # OIDC: lets the job assume the AWS role below
+
+concurrency:
+  group: living-docs-sync
+  cancel-in-progress: false
+
+env:
+  LIVING_DOCS_REPO: BLEND360/blendx-living-docs
+  AWS_REGION: us-east-1
+  # SecureString in SSM Parameter Store, per the secrets-management guideline.
+  LIVING_DOCS_SYNC_TOKEN_PARAM: /blendx/shared/living-docs-token
+
+jobs:
+  sync-living-docs:
+    name: Sync docs/ into blendx-living-docs
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+        with:
+          path: source-repo
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Load sync token from SSM Parameter Store
+        run: |
+          TOKEN=$(aws ssm get-parameter \
+            --name "$LIVING_DOCS_SYNC_TOKEN_PARAM" \
+            --with-decryption \
+            --query Parameter.Value \
+            --output text)
+          echo "::add-mask::$TOKEN"
+          echo "LIVING_DOCS_SYNC_TOKEN=$TOKEN" >> "$GITHUB_ENV"
+
+      - name: Checkout blendx-living-docs
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.LIVING_DOCS_REPO }}
+          token: ${{ env.LIVING_DOCS_SYNC_TOKEN }}
+          ref: main
+          fetch-depth: 0
+          path: blendx-living-docs
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Checkout or create the sync branch
+        working-directory: blendx-living-docs
+        env:
+          GH_TOKEN: ${{ env.LIVING_DOCS_SYNC_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${LIVING_DOCS_REPO}.git"
+
+          SYNC_BRANCH="sync/from-${{ github.event.repository.name }}"
+          echo "SYNC_BRANCH=${SYNC_BRANCH}" >> $GITHUB_ENV
+
+          if git ls-remote --heads origin "$SYNC_BRANCH" | grep -q "$SYNC_BRANCH"; then
+            echo "Existing sync branch found, updating it from main"
+            git fetch origin "$SYNC_BRANCH:refs/remotes/origin/$SYNC_BRANCH"
+            git checkout -B "$SYNC_BRANCH" "origin/$SYNC_BRANCH"
+            git merge origin/main --no-edit
+          else
+            echo "No existing sync branch, creating one from main"
+            git checkout -b "$SYNC_BRANCH"
+          fi
+
+      - name: Run migration script
+        working-directory: blendx-living-docs
+        run: node scripts/generic-migrate-docs.mjs --source ../source-repo/docs --dest aws/fullstack-app-template
+
+      - name: Check for changes
+        id: diff
+        working-directory: blendx-living-docs
+        run: |
+          git add -A
+          if git diff --cached --quiet; then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit, push, and open/update PR
+        if: steps.diff.outputs.has_changes == 'true'
+        working-directory: blendx-living-docs
+        env:
+          GH_TOKEN: ${{ env.LIVING_DOCS_SYNC_TOKEN }}
+        run: |
+          git commit -m "docs: sync from ${{ github.event.repository.name }}@${{ github.sha }}"
+          git push -u origin "$SYNC_BRANCH"
+
+          EXISTING_PR=$(gh pr list --repo "$LIVING_DOCS_REPO" --state open \
+            --head "$SYNC_BRANCH" --json number --jq '.[0].number' || echo "")
+
+          if [ -z "$EXISTING_PR" ]; then
+            gh pr create --repo "$LIVING_DOCS_REPO" \
+              --title "docs: sync from ${{ github.event.repository.name }}" \
+              --base main --head "$SYNC_BRANCH" \
+              --body "Automated sync of \`docs/\` from ${{ github.repository }}@${{ github.sha }}."
+            echo "PR created on branch: $SYNC_BRANCH"
+          else
+            gh pr comment "$EXISTING_PR" --repo "$LIVING_DOCS_REPO" \
+              --body "Updated with the latest changes from ${{ github.repository }}@${{ github.sha }}."
+            echo "Updated existing PR #$EXISTING_PR"
+          fi
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Living Docs Sync" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.diff.outputs.has_changes }}" == "true" ]; then
+            echo "- Status: **Changes synced** — see PR on \`$SYNC_BRANCH\` in $LIVING_DOCS_REPO" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "- Status: No changes — living-docs content already matches this commit's docs/." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "- Source commit: \`${{ github.sha }}\`" >> "$GITHUB_STEP_SUMMARY"
