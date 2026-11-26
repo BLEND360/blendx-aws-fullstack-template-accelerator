@@ -1,0 +1,91 @@
+<svg viewBox="0 0 1000 600" xmlns="http://www.w3.org/2000/svg">
+  <!-- Title -->
+  <text x="500" y="30" font-size="18" font-weight="bold" text-anchor="middle" fill="#1a1a1a">Documentation Sync Workflow</text>
+
+  <!-- Stage 1: Developer -->
+  <rect x="50" y="70" width="150" height="80" fill="#f0f4f8" stroke="#0066cc" stroke-width="2" rx="8"/>
+  <text x="125" y="95" font-size="14" text-anchor="middle" fill="#1a1a1a">Developer</text>
+  <text x="125" y="115" font-size="12" text-anchor="middle" fill="#666">Edits docs/</text>
+  <text x="125" y="130" font-size="12" text-anchor="middle" fill="#666">PR to main</text>
+
+  <!-- Arrow 1 -->
+  <path d="M 200 110 L 260 110" stroke="#0066cc" stroke-width="2" fill="none" marker-end="url(#arrowhead)"/>
+
+  <!-- Stage 2: GitHub Actions -->
+  <rect x="260" y="70" width="180" height="80" fill="#e6f2ff" stroke="#0066cc" stroke-width="2" rx="8"/>
+  <text x="350" y="95" font-size="14" text-anchor="middle" fill="#1a1a1a">GitHub Actions</text>
+  <text x="350" y="115" font-size="12" text-anchor="middle" fill="#666">living-docs-sync.yml</text>
+  <text x="350" y="130" font-size="12" text-anchor="middle" fill="#666">Runs migration script</text>
+
+  <!-- Arrow 2 -->
+  <path d="M 440 110 L 500 110" stroke="#0066cc" stroke-width="2" fill="none" marker-end="url(#arrowhead)"/>
+
+  <!-- Stage 3: Migration -->
+  <rect x="500" y="70" width="180" height="80" fill="#f0f4f8" stroke="#0066cc" stroke-width="2" rx="8"/>
+  <text x="590" y="95" font-size="14" text-anchor="middle" fill="#1a1a1a">Migration Process</text>
+  <text x="590" y="115" font-size="12" text-anchor="middle" fill="#666">Extract titles</text>
+  <text x="590" y="130" font-size="12" text-anchor="middle" fill="#666">Generate frontmatter</text>
+
+  <!-- Arrow 3 -->
+  <path d="M 680 110 L 740 110" stroke="#0066cc" stroke-width="2" fill="none" marker-end="url(#arrowhead)"/>
+
+  <!-- Stage 4: blendx-living-docs -->
+  <rect x="740" y="70" width="160" height="80" fill="#f0f4f8" stroke="#0066cc" stroke-width="2" rx="8"/>
+  <text x="820" y="95" font-size="14" text-anchor="middle" fill="#1a1a1a">blendx-living-docs</text>
+  <text x="820" y="115" font-size="12" text-anchor="middle" fill="#666">PR: sync/from-</text>
+  <text x="820" y="130" font-size="12" text-anchor="middle" fill="#666">blendx-repo-template</text>
+
+  <!-- Arrow down to Validation -->
+  <path d="M 350 150 L 350 220" stroke="#0066cc" stroke-width="2" fill="none" marker-end="url(#arrowhead)"/>
+
+  <!-- Stage 5: Validation -->
+  <rect x="260" y="220" width="180" height="80" fill="#f0f4f8" stroke="#0066cc" stroke-width="2" rx="8"/>
+  <text x="350" y="245" font-size="14" text-anchor="middle" fill="#1a1a1a">Pre-merge Validation</text>
+  <text x="350" y="265" font-size="12" text-anchor="middle" fill="#666">docs-validate.yml</text>
+  <text x="350" y="280" font-size="12" text-anchor="middle" fill="#666">Check formatting</text>
+
+  <!-- Arrow to Deploy -->
+  <path d="M 440 260 L 500 260" stroke="#00aa00" stroke-width="2" fill="none" marker-end="url(#arrowhead-green)"/>
+
+  <!-- Stage 6: Deploy -->
+  <rect x="500" y="220" width="180" height="80" fill="#e6ffe6" stroke="#00aa00" stroke-width="2" rx="8"/>
+  <text x="590" y="245" font-size="14" text-anchor="middle" fill="#1a1a1a">Deploy &amp; Publish</text>
+  <text x="590" y="265" font-size="12" text-anchor="middle" fill="#666">Build Starlight site</text>
+  <text x="590" y="280" font-size="12" text-anchor="middle" fill="#666">Publish to Blend Share</text>
+
+  <!-- Arrow to Live -->
+  <path d="M 680 260 L 740 260" stroke="#00aa00" stroke-width="2" fill="none" marker-end="url(#arrowhead-green)"/>
+
+  <!-- Stage 7: Live -->
+  <rect x="740" y="220" width="160" height="80" fill="#e6ffe6" stroke="#00aa00" stroke-width="2" rx="8"/>
+  <text x="820" y="245" font-size="14" text-anchor="middle" fill="#1a1a1a">Live Docs 🎉</text>
+  <text x="820" y="270" font-size="12" text-anchor="middle" fill="#666">Available for</text>
+  <text x="820" y="285" font-size="12" text-anchor="middle" fill="#666">entire team</text>
+
+  <!-- Key Features -->
+  <text x="50" y="370" font-size="16" font-weight="bold" fill="#1a1a1a">Key Features:</text>
+  <text x="50" y="400" font-size="13" fill="#1a1a1a">✓ Automatic sync on push to main</text>
+  <text x="50" y="425" font-size="13" fill="#1a1a1a">✓ Validation before merge</text>
+  <text x="50" y="450" font-size="13" fill="#1a1a1a">✓ Frontmatter auto-generation</text>
+  <text x="50" y="475" font-size="13" fill="#1a1a1a">✓ Image &amp; link rewriting</text>
+  <text x="50" y="500" font-size="13" fill="#1a1a1a">✓ Live documentation publishing</text>
+
+  <!-- Timeline box -->
+  <rect x="740" y="370" width="160" height="120" fill="#f0f4f8" stroke="#0066cc" stroke-width="2" rx="8"/>
+  <text x="820" y="395" font-size="14" font-weight="bold" text-anchor="middle" fill="#1a1a1a">Timeline</text>
+  <text x="820" y="420" font-size="12" text-anchor="middle" fill="#666">Push to main</text>
+  <text x="820" y="435" font-size="12" text-anchor="middle" fill="#666">↓</text>
+  <text x="820" y="450" font-size="12" text-anchor="middle" fill="#666">~2-3 min sync</text>
+  <text x="820" y="465" font-size="12" text-anchor="middle" fill="#666">↓</text>
+  <text x="820" y="480" font-size="12" text-anchor="middle" fill="#666">Live on Blend Share</text>
+
+  <!-- Arrow markers -->
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <polygon points="0 0, 10 3, 0 6" fill="#0066cc"/>
+    </marker>
+    <marker id="arrowhead-green" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <polygon points="0 0, 10 3, 0 6" fill="#00aa00"/>
+    </marker>
+  </defs>
+</svg>

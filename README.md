@@ -94,6 +94,13 @@ run the same command again. If it stops with "does not let this user create an i
 uv run --project infra python scripts/create_user.py you@example.com
 ```
 
+**To delete it** (the app, its network, and with `--everything` the harness and data), see
+[Costs and cleaning up](#costs-and-cleaning-up). The first command there only shows the plan and deletes nothing:
+
+```bash
+uv run --project infra python scripts/destroy_app.py
+```
+
 The first run takes 15 to 25 minutes (CloudFront and the load balancer are slow to create); a repeat takes under a
 minute. **While it is deployed it costs money**: see [Costs and cleaning up](#costs-and-cleaning-up).
 

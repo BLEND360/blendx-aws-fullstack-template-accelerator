@@ -17,13 +17,33 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "infra"))
 
 import boto3  # noqa: E402
+from botocore.exceptions import ClientError  # noqa: E402
 
 import config  # noqa: E402
 import envfile  # noqa: E402
-from awsutil import cdk, check_account, cli, load_config, outputs  # noqa: E402
+from awsutil import DeployError, cdk, check_account, cli, load_config, outputs  # noqa: E402
 
 BACKEND_ENV = ROOT / "backend" / "api" / ".env"
 FRONTEND_ENV = ROOT / "frontend" / "web" / ".env"
+BOOTSTRAP_STACK = "CDKToolkit"  # what `cdk bootstrap` creates in the region
+
+
+def preflight(c: config.Config, session, stack_only: bool) -> None:
+    """Check what this script needs before the first change. Missing pieces found after the deploy cost minutes."""
+    try:
+        session.client("cloudformation").describe_stacks(StackName=BOOTSTRAP_STACK)
+    except ClientError as e:
+        if "does not exist" not in e.response["Error"]["Message"]:
+            raise
+        raise DeployError(
+            f"The CDK bootstrap stack {BOOTSTRAP_STACK} does not exist in {c.aws_region}: run "
+            "`uv run --project infra python scripts/bootstrap.py` first. Nothing was deployed."
+        ) from e
+    if not stack_only and not BACKEND_ENV.exists():
+        raise DeployError(
+            f"{BACKEND_ENV} not found: run `python scripts/setup.py` first, then deploy_auth.py again. Nothing was deployed."
+        )
+    print(f"Checks passed. Deploying {c.auth_stack} to account {c.aws_account} in {c.aws_region}.")
 
 
 def env_values(c: config.Config, out: dict[str, str]) -> tuple[dict[str, str], dict[str, str]]:
@@ -55,6 +75,7 @@ def main(argv: list[str] | None = None) -> int:
     c = load_config()
     session = boto3.Session(region_name=c.aws_region)
     check_account(c, session)
+    preflight(c, session, args.stack_only)
 
     cdk("deploy", c.auth_stack, "--exclusively", "--require-approval", "never")
     out = outputs(session, c.auth_stack)

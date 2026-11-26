@@ -107,7 +107,8 @@ def test_stack_only_never_reads_or_writes_local_env_files(monkeypatch, tmp_path)
 
     class Cfn:
         def describe_stacks(self, StackName):
-            events.append(("outputs", StackName))
+            if StackName == fixed_config().auth_stack:  # the bootstrap check is a read too, not the outputs step
+                events.append(("outputs", StackName))
             return {"Stacks": [{"Outputs": []}]}
 
     class Session:
@@ -126,3 +127,48 @@ def test_stack_only_never_reads_or_writes_local_env_files(monkeypatch, tmp_path)
     assert events[0] == ("cdk", "deploy", fixed_config().auth_stack, "--exclusively", "--require-approval", "never")
     assert events[1] == ("outputs", fixed_config().auth_stack)
     assert not list(tmp_path.iterdir())
+
+
+def _session(account, *, bootstrapped=True):
+    from botocore.exceptions import ClientError
+
+    class Sts:
+        def get_caller_identity(self):
+            return {"Account": account}
+
+    class Cfn:
+        def describe_stacks(self, StackName):
+            if StackName == "CDKToolkit" and not bootstrapped:
+                raise ClientError({"Error": {"Code": "ValidationError", "Message": f"Stack with id {StackName} does not exist"}}, "DescribeStacks")
+            return {"Stacks": [{"Outputs": []}]}
+
+    class Session:
+        def __init__(self, **_):
+            pass
+
+        def client(self, name):
+            return Sts() if name == "sts" else Cfn()
+
+    return Session
+
+
+def test_no_bootstrap_stops_before_any_deploy(monkeypatch, capsys, tmp_path):
+    deploy_auth = load_script(monkeypatch)
+    deployed = []
+    monkeypatch.setattr(deploy_auth.boto3, "Session", _session(fixed_config().aws_account, bootstrapped=False))
+    monkeypatch.setattr(deploy_auth, "cdk", lambda *a: deployed.append(a))
+    monkeypatch.setattr(deploy_auth, "BACKEND_ENV", tmp_path / ".env")
+    assert deploy_auth.main([]) == 1
+    assert "bootstrap.py" in capsys.readouterr().err
+    assert deployed == []
+
+
+def test_missing_local_env_stops_before_any_deploy(monkeypatch, capsys, tmp_path):
+    deploy_auth = load_script(monkeypatch)
+    deployed = []
+    monkeypatch.setattr(deploy_auth.boto3, "Session", _session(fixed_config().aws_account))
+    monkeypatch.setattr(deploy_auth, "cdk", lambda *a: deployed.append(a))
+    monkeypatch.setattr(deploy_auth, "BACKEND_ENV", tmp_path / "missing.env")
+    assert deploy_auth.main([]) == 1
+    assert "setup.py" in capsys.readouterr().err
+    assert deployed == []
