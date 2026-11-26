@@ -12,6 +12,13 @@ from config import AGENTCORE_TARGET, HARNESS_NAME, Config
 
 HARNESS_DIR = Path(__file__).resolve().parent.parent / "harness"
 
+# How another project in the same account recognises this template's harness, so it can reuse it.
+ACCELERATOR_TAGS = {"blendx:template": "accelerator", "blendx:component": "harness"}
+
+# The only tools the agent may use: the ones the app implements (backend/api/app/tools). Anything else the model
+# asks for, such as the harness's built-in shell, is refused. Must equal the app's TOOLS ids (a test checks it).
+ALLOWED_TOOLS = ("current_time",)
+
 
 def render(c: Config) -> dict[str, dict | list]:
     """Relative path under harness/ -> file content."""
@@ -21,7 +28,7 @@ def render(c: Config) -> dict[str, dict | list]:
             "name": c.agentcore_project,
             "version": 1,
             "managedBy": "CDK",
-            "tags": {"agentcore:created-by": "agentcore-cli", "agentcore:project-name": c.name},
+            "tags": {"agentcore:created-by": "agentcore-cli", "agentcore:project-name": c.name, "blendx:project": c.name, **ACCELERATOR_TAGS},
             "runtimes": [],
             "memories": [],
             "knowledgeBases": [],
@@ -44,12 +51,13 @@ def render(c: Config) -> dict[str, dict | list]:
                 "region": c.aws_region,
             }
         ],
-        # A model and managed memory, nothing else: no tools, skills or gateways.
+        # A model, managed memory and the app's tools, nothing else: no skills or gateways.
         f"app/{HARNESS_NAME}/harness.json": {
             "name": HARNESS_NAME,
             "model": {"provider": "bedrock", "modelId": c.harness_model_id},
             "executionRoleArn": c.role_arn(c.harness_execution_role),
             "memory": {"mode": "managed"},
+            "allowedTools": list(ALLOWED_TOOLS),
         },
     }
 

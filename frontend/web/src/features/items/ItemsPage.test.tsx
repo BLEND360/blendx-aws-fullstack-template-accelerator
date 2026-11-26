@@ -1,0 +1,174 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { itemsFetch } from "../../test/standin";
+import { ItemsPage } from "./ItemsPage";
+
+const unrouted = () => new Response("", { status: 404 });
+
+function mount(fetchImpl = itemsFetch(unrouted)) {
+  vi.stubGlobal("fetch", fetchImpl);
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={client}>
+      <ItemsPage />
+    </QueryClientProvider>,
+  );
+  return fetchImpl;
+}
+
+// The form lives in a dialog: nothing to type until "Add item" is pressed.
+const nameBox = () => screen.getByRole("textbox", { name: "Name" });
+const openDialog = () => userEvent.click(screen.getByRole("button", { name: "Add item" }));
+const submit = () => userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Create item" }));
+const ONE = [{ id: "item-1", name: "First", description: "about first", createdAt: "2026-10-05T00:00:00Z" }];
+
+test("shows a loader while the list loads, then the empty state", async () => {
+  mount();
+  expect(screen.getByRole("status", { name: "Loading" })).toBeInTheDocument();
+  expect(await screen.findByText("No items yet")).toBeInTheDocument();
+});
+
+test("lists the user's items", async () => {
+  mount(
+    itemsFetch(unrouted, [
+      { id: "item-1", name: "First", description: "about first", createdAt: "2026-10-05T00:00:00Z" },
+    ]),
+  );
+  expect(await screen.findByText("First")).toBeInTheDocument();
+  expect(screen.getByText("about first")).toBeInTheDocument();
+  expect(screen.queryByText("No items yet")).not.toBeInTheDocument();
+});
+
+test("a created item appears in the list without reloading, and the form clears", async () => {
+  const fetchImpl = mount();
+  await screen.findByText("No items yet");
+  await openDialog();
+  await userEvent.type(nameBox(), "Brand new");
+  await submit();
+  expect(await screen.findByText("Brand new")).toBeInTheDocument();
+  expect(screen.queryByText("No items yet")).not.toBeInTheDocument();
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument()); // closes on success
+  expect(fetchImpl.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(1);
+});
+
+test("a rejected field is explained next to the field and what was typed is kept", async () => {
+  mount();
+  await screen.findByText("No items yet");
+  await openDialog();
+  await userEvent.type(screen.getByRole("textbox", { name: "Description" }), "keep me");
+  await submit(); // empty name: the API says so
+  expect(await screen.findByText("Name is required.")).toBeInTheDocument();
+  expect(screen.getByRole("textbox", { name: "Description" })).toHaveValue("keep me");
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});
+
+test("editing a field clears its error", async () => {
+  mount();
+  await screen.findByText("No items yet");
+  await openDialog();
+  await submit();
+  await screen.findByText("Name is required.");
+  await userEvent.type(nameBox(), "x");
+  await waitFor(() => expect(screen.queryByText("Name is required.")).not.toBeInTheDocument());
+});
+
+test("another failure shows the error with its request id and a retry that works", async () => {
+  const fetchImpl = mount();
+  await screen.findByText("No items yet");
+  await openDialog();
+  await userEvent.type(nameBox(), "error");
+  await submit();
+  expect(await screen.findByText("The data store is temporarily unavailable.")).toBeInTheDocument();
+  expect(screen.getByText(/Request ID: standin-/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  expect(nameBox()).toHaveValue("error");
+  expect(fetchImpl.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(1);
+  await userEvent.click(screen.getByRole("button", { name: "Retry" }));
+  await waitFor(() => expect(fetchImpl.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(2));
+});
+
+test("a failed load shows the error with retry", async () => {
+  const failing = vi.fn<typeof fetch>().mockResolvedValue(
+    new Response(JSON.stringify({ error: { code: "data_throttled", message: "The data store is busy.", retryable: true } }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    }),
+  );
+  mount(failing);
+  expect(await screen.findByText("The data store is busy.")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+});
+
+test("the create form is not on the page until it is asked for", async () => {
+  mount();
+  await screen.findByText("No items yet");
+  expect(screen.queryByRole("textbox", { name: "Name" })).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Create your first item" }));
+  expect(nameBox()).toBeInTheDocument();
+});
+
+test("cancelling the dialog creates nothing", async () => {
+  const fetchImpl = mount();
+  await screen.findByText("No items yet");
+  await openDialog();
+  await userEvent.type(nameBox(), "never saved");
+  await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cancel" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  expect(fetchImpl.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(0);
+});
+
+test("an item can be edited from its menu, prefilled, and the list shows the change", async () => {
+  const fetchImpl = mount(itemsFetch(unrouted, structuredClone(ONE)));
+  await screen.findByText("First");
+  await userEvent.click(screen.getByRole("button", { name: "Item actions: First" }));
+  await userEvent.click(await screen.findByRole("menuitem", { name: /edit/i }));
+  expect(nameBox()).toHaveValue("First");
+  await userEvent.clear(nameBox());
+  await userEvent.type(nameBox(), "Renamed");
+  await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Save changes" }));
+  expect(await screen.findByText("Renamed")).toBeInTheDocument();
+  expect(screen.queryByText("First")).not.toBeInTheDocument();
+  expect(fetchImpl.mock.calls.filter(([, init]) => init?.method === "PATCH")).toHaveLength(1);
+});
+
+test("deleting asks first, then removes the item", async () => {
+  const fetchImpl = mount(itemsFetch(unrouted, structuredClone(ONE)));
+  await screen.findByText("First");
+  await userEvent.click(screen.getByRole("button", { name: "Item actions: First" }));
+  await userEvent.click(await screen.findByRole("menuitem", { name: /delete/i }));
+  const dialog = await screen.findByRole("dialog", { name: "Delete this item?" });
+  expect(fetchImpl.mock.calls.filter(([, init]) => init?.method === "DELETE")).toHaveLength(0);
+  await userEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+  expect(await screen.findByText("No items yet")).toBeInTheDocument();
+  expect(fetchImpl.mock.calls.filter(([, init]) => init?.method === "DELETE")).toHaveLength(1);
+});
+
+test("a failed delete's error does not carry over to the next item", async () => {
+  const inner = itemsFetch(unrouted, [...structuredClone(ONE), { ...ONE[0], id: "item-2", name: "Second" }]);
+  const failing = vi.fn<typeof fetch>((input, init) =>
+    init?.method === "DELETE" && String(input).endsWith("item-1")
+      ? Promise.resolve(
+          new Response(JSON.stringify({ error: { code: "data_unavailable", message: "Down.", retryable: true, requestId: "r-1" } }), {
+            status: 503,
+            headers: { "Content-Type": "application/json" },
+          }),
+        )
+      : inner(input, init),
+  );
+  mount(failing);
+  const askToDelete = async (name: string) => {
+    await userEvent.click(await screen.findByRole("button", { name: `Item actions: ${name}` }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: /delete/i }));
+    return screen.findByRole("dialog", { name: "Delete this item?" });
+  };
+
+  const first = await askToDelete("First");
+  await userEvent.click(within(first).getByRole("button", { name: "Delete" }));
+  expect(await within(first).findByRole("alert")).toBeInTheDocument();
+  await userEvent.click(within(first).getByRole("button", { name: "Cancel" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+  const second = await askToDelete("Second");
+  expect(within(second).queryByRole("alert")).not.toBeInTheDocument();
+});

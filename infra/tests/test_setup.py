@@ -1,5 +1,6 @@
 """Runs scripts/setup.py against a throwaway copy of the repo."""
 
+import re
 import shutil
 import subprocess
 import sys
@@ -34,6 +35,10 @@ def test_writes_env_files_and_removes_itself(clone):
     assert result.returncode == 0, result.stderr
     backend = (clone / "backend/api/.env").read_text()
     assert f"SESSIONS_TABLE_NAME={config.load().sessions_table}" in backend
+    assert "CORS" not in backend
+    assert "COGNITO_USER_POOL_ID=" in backend.splitlines() and "COGNITO_APP_CLIENT_ID=" in backend.splitlines()
+    secret = next(l for l in backend.splitlines() if l.startswith("AUTH_JWT_SECRET=")).split("=", 1)[1]
+    assert len(secret) >= 32
     assert (clone / "frontend/web/.env").read_text().startswith("#")
     assert (clone / "harness/app/assistant/harness.json").exists()
     assert not (clone / "scripts/setup.py").exists()
@@ -51,9 +56,36 @@ def test_second_run_reports_complete(clone):
     assert (clone / "backend/api/.env").read_text() == before
 
 
+def test_only_the_missing_env_file_is_written_so_edits_and_the_secret_survive(clone):
+    run(clone)
+    shutil.copy(SETUP, clone / "scripts/setup.py")
+    backend = clone / "backend/api/.env"
+    backend.write_text("EDITED=1\n")
+    (clone / "frontend/web/.env").unlink()
+
+    assert run(clone).returncode == 0
+
+    assert backend.read_text() == "EDITED=1\n"
+    assert (clone / "frontend/web/.env").read_text().startswith("#")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="no os.getuid on Windows")
+def test_writes_the_compose_env_with_the_host_uid_and_keeps_an_existing_one(clone):
+    import os
+
+    run(clone)
+    compose = (clone / ".env").read_text().splitlines()
+    assert f"HOST_UID={os.getuid()}" in compose and f"HOST_GID={os.getgid()}" in compose
+
+    (clone / ".env").write_text("HOST_UID=4242\n")
+    shutil.copy(SETUP, clone / "scripts/setup.py")
+    run(clone)
+    assert (clone / ".env").read_text() == "HOST_UID=4242\n"
+
+
 def test_invalid_project_toml_fails_and_keeps_script(clone):
     toml = clone / "project.toml"
-    toml.write_text(toml.read_text().replace('"123456789012"', '"nope"'))
+    toml.write_text(re.sub(r'aws_account\s*=\s*"\d+"', 'aws_account = "nope"', toml.read_text()))
 
     result = run(clone)
 

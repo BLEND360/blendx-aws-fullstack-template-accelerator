@@ -27,6 +27,13 @@ def client(service: str, config: Config | None = None) -> Any:
     return session().client(service, config=config)
 
 
+def table(name: str) -> Any:
+    """A DynamoDB table handle for the repositories. Bounded timeouts and botocore's standard retries:
+    unlike a harness turn, a read or a conditional write is safe to repeat."""
+    config = Config(connect_timeout=3, read_timeout=5, retries={"max_attempts": 3, "mode": "standard"})
+    return session().resource("dynamodb", config=config).Table(name)
+
+
 class HarnessProbe:
     """GetHarness on the configured ARN: proves it exists and the task can see it."""
 

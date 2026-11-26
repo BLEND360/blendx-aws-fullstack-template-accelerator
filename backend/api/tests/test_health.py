@@ -33,6 +33,13 @@ def test_health_touches_nothing(client):
     assert client.get("/health").json() == {"status": "ok"}
 
 
+def test_public_api_health_is_json_and_touches_nothing(client):
+    response = client.get("/api/health")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+    assert response.headers["content-type"].startswith("application/json")
+
+
 def test_ready_ok(client):
     use([FakeProbe("harness"), FakeProbe("table:test-sessions")])
     response = client.get("/ready")

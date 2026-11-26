@@ -1,0 +1,42 @@
+name: Validate Documentation
+
+# Runs on PRs touching docs/** to catch errors before sync
+
+on:
+  pull_request:
+    paths:
+      - 'docs/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-docs:
+    name: Check docs frontmatter and structure
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Validate docs
+        run: node scripts/validate-docs.mjs
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Documentation Validation" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Checked:" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Frontmatter completeness (title, description, sidebar.order)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- No H1s in code blocks" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Image references use ./images/" >> "$GITHUB_STEP_SUMMARY"
+          echo "- No dead links to missing docs" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Fix validation errors before merging." >> "$GITHUB_STEP_SUMMARY"

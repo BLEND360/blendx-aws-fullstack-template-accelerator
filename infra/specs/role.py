@@ -13,4 +13,3 @@ class RoleSpec:
     assumed_by: iam.IPrincipal
     managed_policies: list[iam.IManagedPolicy] = field(default_factory=list)
     statements: list[iam.PolicyStatement] = field(default_factory=list)
-    max_session_hours: int = 1

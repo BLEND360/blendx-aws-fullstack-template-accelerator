@@ -7,8 +7,7 @@ import config
 
 ROOT = Path(__file__).resolve().parents[2]
 EXCLUDED = ("project.toml",)
-# ponytail: substring match; a name that is a common word ("api") would false-positive.
-# Meaningful for the template's placeholder name; tighten to word boundaries if it bites.
+# Substring match: a common-word name would false-positive.
 
 
 def test_project_name_not_hardcoded():

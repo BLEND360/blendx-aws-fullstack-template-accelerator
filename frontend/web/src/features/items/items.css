@@ -1,0 +1,37 @@
+.item-card {
+  gap: var(--space-1);
+  min-height: 168px;
+}
+
+.item-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.item-card .card-title {
+  margin-top: var(--space-2);
+  overflow-wrap: anywhere;
+}
+
+.item-card-desc {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.item-card-date {
+  margin-top: auto;
+  padding-top: var(--space-3);
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.item-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px; /* dialogs render in a portal, outside .app-shell: no design variables here */
+  margin-top: 24px;
+}

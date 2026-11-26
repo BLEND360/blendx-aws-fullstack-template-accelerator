@@ -5,7 +5,7 @@ the caller in `X-Request-Id` and in the body of any error. Held in a
 ContextVar because logging needs it and cannot take a request parameter at
 every call site. Starlette's threadpool copies the context, so sync endpoints
 and `run_in_threadpool` log with the id too; a raw `threading.Thread` must
-re-bind it (the harness client does, ST-06).
+re-bind it (the harness client does).
 """
 
 import contextvars

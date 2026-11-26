@@ -1,0 +1,137 @@
+"""Find the harness the app will invoke, and the memory it keeps conversations in.
+
+The deploy script needs both ARNs to scope the task role's permissions to exactly them. The harness
+comes from project.toml (`harness.arn`) or, for the starter harness, from its stack's outputs; the
+memory is whatever the harness says it uses, found the way the backend finds it (GetHarness). If
+either cannot be found it raises and names what is missing: a permission is never widened to cope.
+"""
+
+import re
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "infra"))
+
+from botocore.exceptions import ClientError  # noqa: E402
+
+import config  # noqa: E402
+import harness_files  # noqa: E402
+from awsutil import DeployError  # noqa: E402
+
+_MEMORY_ARN = re.compile(r"^arn:aws:bedrock-agentcore:[a-z0-9-]+:\d{12}:memory/[A-Za-z0-9_-]+$")
+
+
+class HarnessResolveError(DeployError):
+    pass
+
+
+def resolve(c: config.Config, session) -> tuple[str, str]:
+    """(harness_arn, memory_arn)."""
+    harness_arn = c.harness_arn or starter_harness_arn(c, session)
+    return harness_arn, _memory_arn(session, harness_arn)
+
+
+def stack_exists(session, name: str) -> bool:
+    try:
+        session.client("cloudformation").describe_stacks(StackName=name)
+    except ClientError as e:
+        if "does not exist" in e.response["Error"]["Message"]:
+            return False
+        raise HarnessResolveError(f"Cannot read the stack {name}: {e.response['Error']['Code']}") from e
+    return True
+
+
+_HARNESS_ARN = re.compile(r"^arn:aws:bedrock-agentcore:[a-z0-9-]+:\d{12}:harness/[A-Za-z0-9_-]+$")
+
+
+def find_accelerator_harness(session) -> str | None:
+    """The newest harness this template deployed in the account, found by its tags; None when there is none.
+
+    Only harnesses carrying ACCELERATOR_TAGS count, so another team's harness is never picked up. The tags can
+    outlive a deleted harness, so each candidate must still exist. Several live ones: the newest is reused.
+    """
+    tagging = session.client("resourcegroupstaggingapi")
+    tag_filters = [{"Key": key, "Values": [value]} for key, value in harness_files.ACCELERATOR_TAGS.items()]
+    pages = tagging.get_paginator("get_resources").paginate(TagFilters=tag_filters, ResourceTypeFilters=["bedrock-agentcore"])
+    arns = [r["ResourceARN"] for page in pages for r in page["ResourceTagMappingList"]]
+    control = session.client("bedrock-agentcore-control")
+    live = []
+    for arn in arns:
+        if not _HARNESS_ARN.match(arn):  # endpoints (.../harness/<id>/harness-endpoint/...) are not harnesses
+            continue
+        try:
+            created = control.get_harness(harnessId=arn.rsplit("/", 1)[-1])["harness"]["createdAt"]
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "ResourceNotFoundException":
+                continue  # a deleted harness whose tags are still indexed
+            raise HarnessResolveError(f"Cannot read the harness {arn} ({e.response['Error']['Code']}).") from e
+        live.append((created, arn))
+    return max(live)[1] if live else None
+
+
+def stack_harness(c: config.Config, session) -> dict | None:
+    """The harness this project's own stack deployed ({id, arn, version}), or None when the stack does not exist."""
+    if not stack_exists(session, c.harness_stack):
+        return None
+    stack = session.client("cloudformation").describe_stacks(StackName=c.harness_stack)["Stacks"][0]
+    outputs = {o["OutputKey"]: o["OutputValue"] for o in stack.get("Outputs", [])}
+
+    def get(field: str) -> str:
+        needle = f"Harness{c.harness_logical_name}{field}Output"
+        matches = [v for k, v in outputs.items() if needle in k]
+        if not matches:
+            raise HarnessResolveError(f"The stack {c.harness_stack} has no output containing {needle!r}.")
+        return matches[0]
+
+    return {"id": get("Id"), "arn": get("Arn"), "version": get("Version")}
+
+
+def deployed_settings(session, harness_id: str) -> dict:
+    """The settings the live harness runs with, as the fields the template renders them (GetHarness)."""
+    harness = session.client("bedrock-agentcore-control").get_harness(harnessId=harness_id)["harness"]
+    # GetHarness nests the model id as model.bedrockModelConfig.modelId (checked against the live harness).
+    model = (harness.get("model") or {}).get("bedrockModelConfig") or {}
+    return {"allowedTools": sorted(harness.get("allowedTools") or []), "modelId": model.get("modelId")}
+
+
+def starter_harness_arn(c: config.Config, session) -> str:
+    """This project's starter harness, or the accelerator harness another project already deployed here."""
+    try:
+        stack = session.client("cloudformation").describe_stacks(StackName=c.harness_stack)["Stacks"][0]
+    except ClientError as e:
+        if "does not exist" in e.response["Error"]["Message"]:
+            if shared := find_accelerator_harness(session):
+                return shared
+            raise HarnessResolveError(
+                f"The starter harness stack {c.harness_stack} does not exist: deploy it first with "
+                "`uv run --project infra python scripts/deploy_harness.py` (or set harness.arn in project.toml)."
+            ) from e
+        raise HarnessResolveError(f"Cannot read the stack {c.harness_stack}: {e.response['Error']['Code']}") from e
+    # The agentcore CDK construct nests its outputs, so the key is <Scope>Harness<Name>ArnOutput<hash>,
+    # as scripts/harness/get-harness-version.sh matches it. AgentRuntimeArn is a different output.
+    needle = f"Harness{c.harness_logical_name}ArnOutput"
+    outputs = {o["OutputKey"]: o["OutputValue"] for o in stack.get("Outputs", [])}
+    for key, value in outputs.items():
+        if needle in key:
+            return value
+    raise HarnessResolveError(
+        f"The stack {c.harness_stack} has no output containing {needle!r}. Its outputs: {', '.join(outputs) or 'none'}."
+    )
+
+
+def _memory_arn(session, harness_arn: str) -> str:
+    try:
+        harness = session.client("bedrock-agentcore-control").get_harness(harnessId=harness_arn.rsplit("/", 1)[-1])["harness"]
+    except ClientError as e:
+        code = e.response["Error"]["Code"]
+        hint = " The operator needs bedrock-agentcore:GetHarness." if code.startswith("AccessDenied") else ""
+        raise HarnessResolveError(f"Cannot read the harness {harness_arn} ({code}).{hint}") from e
+    configuration = harness.get("memory") or {}
+    for kind in ("managedMemoryConfiguration", "agentCoreMemoryConfiguration"):
+        arn = (configuration.get(kind) or {}).get("arn", "")
+        if arn and not _MEMORY_ARN.match(arn):
+            raise HarnessResolveError(f"The harness {harness_arn} reports a memory that is not a concrete memory ARN: {arn!r}.")
+        if arn:
+            return arn
+    raise HarnessResolveError(f"The harness {harness_arn} has no memory (configured: {', '.join(configuration) or 'none'}).")

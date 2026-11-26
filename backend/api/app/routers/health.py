@@ -1,4 +1,5 @@
 from functools import cache
+from typing import Any
 
 from fastapi import APIRouter, Depends, Response
 
@@ -17,6 +18,12 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@router.get("/api/health")
+def public_api_health() -> dict[str, str]:
+    """Public smoke-test endpoint routed through CloudFront to the API."""
+    return {"status": "ok"}
+
+
 @cache
 def readiness_service() -> ReadinessService:
     return ReadinessService(
@@ -29,7 +36,7 @@ def readiness_service() -> ReadinessService:
 
 
 @router.get("/ready")
-def ready(response: Response, service: ReadinessService = Depends(readiness_service)) -> dict:
+def ready(response: Response, service: ReadinessService = Depends(readiness_service)) -> dict[str, Any]:
     """503 when a dependency is unreachable, so an uptime check can alert on it
     while /health keeps the tasks in service."""
     report = service.report()
